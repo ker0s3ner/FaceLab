@@ -47,7 +47,7 @@ Respond with this exact JSON structure:
 Be honest but constructive. Focus on objective facial features rather than subjective beauty standards.`;
 
 export const analyzeFace = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => inputSchema.parse(data))
+  .validator((data: unknown) => inputSchema.parse(data))
   .handler(async ({ data }): Promise<AnalysisResult> => {
     const apiKey = process.env["LOVABLE_API_KEY"];
     if (!apiKey) throw new Error("AI is not configured");
