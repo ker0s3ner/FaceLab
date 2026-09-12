@@ -1,5 +1,4 @@
-import { useCallback } from "react";
-import { useDropzone } from "react-dropzone";
+import { useRef, useState } from "react";
 import { Upload, X, Camera, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -11,29 +10,33 @@ interface ImageUploadProps {
   icon: "front" | "side";
 }
 
-export function ImageUpload({ label, description, image, onImageChange, icon }: ImageUploadProps) {
-  const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      const file = acceptedFiles[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = () => onImageChange(reader.result as string);
-        reader.readAsDataURL(file);
-      }
-    },
-    [onImageChange],
-  );
+const MAX_SIZE = 10 * 1024 * 1024;
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { "image/*": [".jpeg", ".jpg", ".png", ".webp"] },
-    maxFiles: 1,
-    maxSize: 10 * 1024 * 1024,
-  });
+export function ImageUpload({ label, description, image, onImageChange, icon }: ImageUploadProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const handleFile = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setFileError("Please choose an image file.");
+      return;
+    }
+    if (file.size > MAX_SIZE) {
+      setFileError("Image must be 10MB or smaller.");
+      return;
+    }
+    setFileError(null);
+    const reader = new FileReader();
+    reader.onload = () => onImageChange(reader.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const removeImage = (e: React.MouseEvent) => {
     e.stopPropagation();
     onImageChange(null);
+    if (inputRef.current) inputRef.current.value = "";
   };
 
   return (
@@ -53,7 +56,26 @@ export function ImageUpload({ label, description, image, onImageChange, icon }: 
       </div>
 
       <div
-        {...getRootProps()}
+        role="button"
+        tabIndex={0}
+        aria-label={`Upload ${label} photo`}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragActive(true);
+        }}
+        onDragLeave={() => setIsDragActive(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragActive(false);
+          handleFile(e.dataTransfer.files?.[0]);
+        }}
         className={cn(
           "relative flex aspect-[3/4] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all duration-200",
           isDragActive
@@ -63,7 +85,13 @@ export function ImageUpload({ label, description, image, onImageChange, icon }: 
               : "border-muted-foreground/25 bg-muted/30 hover:border-primary/50 hover:bg-primary/5",
         )}
       >
-        <input {...getInputProps()} />
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => handleFile(e.target.files?.[0])}
+        />
 
         {image ? (
           <>
@@ -90,6 +118,8 @@ export function ImageUpload({ label, description, image, onImageChange, icon }: 
           </div>
         )}
       </div>
+
+      {fileError && <p className="text-xs text-destructive">{fileError}</p>}
     </div>
   );
 }
