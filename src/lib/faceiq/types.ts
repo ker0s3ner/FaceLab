@@ -337,7 +337,7 @@ export function pillarsFromResult(result: AnalysisResult, real?: RealMeasurement
       { name: "Jaw Definition", raw: "6.4/10", ideal: "7–10", view: "front", desc: "Ramus visibility + mandibular border crispness." },
       { name: "Cheek Leanness", raw: "5.9/10", ideal: "6–9", view: "front", desc: "Cheek hollow + submalar shadow depth." },
       { name: "Chin Definition", raw: "6.1/10", ideal: "7–10", view: "front", desc: "Menton shape clarity + chin-neck separation." },
-      { name: "Submental Definition", raw: "5.6/10", ideal: "7–10", view: "side", desc: "Under-chin tightness; less fullness reads more angular." },
+      { name: "Submental Definition", raw: "5.6/10", ideal: "7–10", view: "front", desc: "Under-chin tightness on front view; less fullness reads more angular." },
     ],
     Dimorphism: [
       { name: "Jaw", raw: "6.2/10", ideal: "7–10", view: "front", desc: "Jaw width + angularity dimorphism signal." },

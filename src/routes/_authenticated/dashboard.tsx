@@ -699,14 +699,25 @@ function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selec
     "Gonial Angle": { x: 28, y: 68 },
   };
 
+  // View behavior per pillar:
+  // - Harmony: strict front/side split, user picks via the two photo cards.
+  // - Angularity: front profile only, no view choice.
+  // - Dimorphism: no view choice; photo follows the highlighted region
+  //   (Brow Ridge is side, everything else front).
+  // - Features: front profile assessments.
+  const isHarmony = pillar === "Harmony";
+  const highlightedView = (enriched.find((r: any) => r.name === highlightId) as any)?.view as "front" | "side" | undefined;
+  const effView: "front" | "side" = isHarmony ? view : (highlightedView ?? "front");
+  const effScore = isHarmony && effView === "side" ? p.side_score : p.front_score;
+
   return (
     <div className="space-y-6">
-      {/* Sub-nav — removed tictac Front/Side toggle, controlled by the two photo+score buttons below */}
+      {/* Sub-nav */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {(["Harmony", "Angularity", "Dimorphism", "Features"] as const).map((n) => (
           <button
             key={n}
-            onClick={() => setPillar(n)}
+            onClick={() => { setPillar(n); setHighlightId(null); }}
             className={`rounded-full border px-4 py-1.5 text-sm whitespace-nowrap ${pillar === n ? "bg-zinc-900 text-white border-zinc-900 dark:bg-white dark:text-zinc-900" : "bg-white border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700"}`}
           >
             {n}
@@ -714,7 +725,8 @@ function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selec
         ))}
       </div>
 
-      {/* Score summary bar — clickable to switch Front/Side view */}
+      {/* Score summary bar — only Harmony has front/side views */}
+      {isHarmony && (
       <div className="grid grid-cols-2 gap-3">
         <button onClick={() => setView("front")} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${view === "front" ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800 ring-1 ring-zinc-900 dark:ring-white" : "bg-white dark:bg-zinc-900 dark:border-zinc-800 hover:bg-zinc-50"}`}>
           <img src={selected.front_photo} alt="front" className="h-12 w-9 rounded-lg object-cover" />
@@ -727,30 +739,31 @@ function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selec
           {view === "side" && <span className="ml-auto text-zinc-900 dark:text-white">●</span>}
         </button>
       </div>
+      )}
 
       {/* Main 3-col layout §5.3 */}
       <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-6">
         {/* Left large photo panel — real MediaPipe mesh overlay */}
         <Card className="overflow-hidden p-0">
           <LandmarkPhoto
-            src={view === "front" ? selected.front_photo : selected.side_photo}
-            points={view === "front" ? selected.landmarkPoints?.front : selected.landmarkPoints?.side}
-            keys={view === "front" ? selected.keyPoints?.front : selected.keyPoints?.side}
+            src={effView === "front" ? selected.front_photo : selected.side_photo}
+            points={effView === "front" ? selected.landmarkPoints?.front : selected.landmarkPoints?.side}
+            keys={effView === "front" ? selected.keyPoints?.front : selected.keyPoints?.side}
             enriched={enriched}
             highlightId={highlightId}
             setHighlightId={setHighlightId}
             landmarkPos={landmarkPos}
-            view={view}
+            view={effView}
             pillar={pillar}
           />
           <div className="flex items-end justify-between p-4">
             <div>
-              <p className="text-xs tracking-widest uppercase text-zinc-400">{view} Harmony</p>
+              <p className="text-xs tracking-widest uppercase text-zinc-400">{effView} {pillar}</p>
               <p className="text-xs text-zinc-500">Score</p>
             </div>
             <div className="text-right">
-              <p className="brand-display text-2xl tabular-nums">{p.front_score.toFixed(1)}</p>
-              <p className="text-xs text-zinc-500">{descriptor}</p>
+              <p className="brand-display text-2xl tabular-nums">{effScore.toFixed(1)}</p>
+              <p className="text-xs text-zinc-500">{effScore >= 8 ? "Excellent" : effScore >= 6 ? "Good" : "Developing"} {pillar}</p>
             </div>
           </div>
         </Card>
@@ -763,7 +776,7 @@ function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selec
           </button>
           {showExplainer && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{pillar === "Harmony" ? "Harmony measures facial proportional balance — widths, thirds, and symmetry across front and side views." : pillar === "Angularity" ? "Angularity measures jawline, cheekbone and brow definition — bone structure sharpness." : pillar === "Dimorphism" ? "Dimorphism measures gendered traits — brow, jaw, nose and chin masculinity/femininity signals." : "Features measures eyes, nose, lips and skin detail — fine feature quality."} Ideal ranges calibrated by gender/ethnicity. ● = measured from your photo mesh.</p>}
 
-          <h4 className="mt-4 font-medium">Your {view} Ratios <span className="ml-1 text-xs font-normal text-zinc-400">{fallbackRatios.length} measured</span></h4>
+          <h4 className="mt-4 font-medium">{isHarmony ? `Your ${effView} Ratios` : `Your ${pillar} assessments`} <span className="ml-1 text-xs font-normal text-zinc-400">{fallbackRatios.length} measured</span></h4>
           <ul className="mt-3 space-y-2 pr-1">
             {enriched.map((r: any) => {
               const isActive = highlightId === r.name;
