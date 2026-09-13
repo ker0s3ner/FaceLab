@@ -12,10 +12,11 @@ import { RatingDisplay } from "@/components/rating-display";
 import { Sparkles, Loader2, Shield, Trash2, Brain, Save } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { analyzeFace, type AnalysisResult } from "@/lib/analyze.functions";
-import { regionBoxFor, severityColor, type PillarName } from "@/lib/faceiq/types";
+import { regionBoxFor, type PillarName } from "@/lib/faceiq/types";
 import { flawStatesFor } from "@/lib/faceiq/flaws";
 import { TREATMENTS } from "@/lib/faceiq/treatments";
 import { RatioOverlay } from "@/components/ratio-overlay";
+import { RatioRow } from "@/components/ratio-row";
 import { FlawAccordion } from "@/components/flaw-accordion";
 import { RatioModal, type RatioModalContext } from "@/components/ratio-modal";
 
@@ -176,23 +177,26 @@ function Dashboard() {
           {activeTab === "simulate" && <SimulateTab selected={selected} />}
         </>
       )}
-      {modal && selected && (
-        <RatioModal
-          ctx={modal}
-          onNavigate={(i) => {
-            const r = modal.ratios[i] as any;
-            const side = r?.view === "side";
-            setModal({
-              ...modal,
-              index: i,
-              photoSrc: side ? selected.side_photo : selected.front_photo,
-              keys: ((side ? selected.keyPoints?.side : selected.keyPoints?.front) ?? {}) as Record<string, { x: number; y: number }>,
-            });
-          }}
-          onClose={() => setModal(null)}
-          onOverride={(name, val) => overrideRatio(selected.id, name, val)}
-        />
-      )}
+      <AnimatePresence>
+        {modal && selected && (
+          <RatioModal
+            key="ratio-modal"
+            ctx={modal}
+            onNavigate={(i) => {
+              const r = modal.ratios[i] as any;
+              const side = r?.view === "side";
+              setModal({
+                ...modal,
+                index: i,
+                photoSrc: side ? selected.side_photo : selected.front_photo,
+                keys: ((side ? selected.keyPoints?.side : selected.keyPoints?.front) ?? {}) as Record<string, { x: number; y: number }>,
+              });
+            }}
+            onClose={() => setModal(null)}
+            onOverride={(name, val) => overrideRatio(selected.id, name, val)}
+          />
+        )}
+      </AnimatePresence>
 
       {state.analyses.length > 0 && (
         <button onClick={() => { if (confirm("Clear all?")) clearAll(); }} className="mt-8 text-xs text-zinc-400">Clear all analyses</button>
@@ -777,41 +781,16 @@ function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selec
           {showExplainer && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{pillar === "Harmony" ? "Harmony measures facial proportional balance — widths, thirds, and symmetry across front and side views." : pillar === "Angularity" ? "Angularity measures jawline, cheekbone and brow definition — bone structure sharpness." : pillar === "Dimorphism" ? "Dimorphism measures gendered traits — brow, jaw, nose and chin masculinity/femininity signals." : "Features measures eyes, nose, lips and skin detail — fine feature quality."} Ideal ranges calibrated by gender/ethnicity. ● = measured from your photo mesh.</p>}
 
           <h4 className="mt-4 font-medium">{isHarmony ? `Your ${effView} Ratios` : `Your ${pillar} assessments`} <span className="ml-1 text-xs font-normal text-zinc-400">{fallbackRatios.length} measured</span></h4>
-          <ul className="mt-3 space-y-2 pr-1">
-            {enriched.map((r: any) => {
-              const isActive = highlightId === r.name;
-              const accent = r.severity_tag === "SEVERE" || r.severity_tag === "EXTREME" ? "border-l-red-500" : r.severity_tag === "IDEAL" ? "border-l-emerald-500" : "border-l-zinc-300 dark:border-l-zinc-600";
-              return (
-              <li
+          <ul className="mt-1 divide-y divide-zinc-100 px-1 dark:divide-zinc-800/70">
+            {enriched.map((r: any) => (
+              <RatioRow
                 key={r.name}
-                onClick={() => setHighlightId(isActive ? null : r.name)}
-                onDoubleClick={() => onOpenRatio?.(r.name)}
-                className={`cursor-pointer rounded-lg border border-l-4 px-3 py-2.5 transition-colors ${accent} ${isActive ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800" : "bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800"}`}
-                title="Click to highlight on photo · double-click for full detail"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{r.name}</p>
-                    <div className="mt-1 h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-500" style={{ width: `${Math.min(100, Math.max(8, (r.value / 10) * 100))}%` }} />
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <span className={`inline-flex rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>{r.severity_tag}</span>
-                    <p className="mt-1 text-xs tabular-nums text-zinc-500">{r.raw_measurement ?? r.value.toFixed(2)}</p>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onOpenRatio?.(r.name); }}
-                    className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-900 hover:text-white dark:border-zinc-700"
-                    title="Open full detail"
-                  >
-                    ⤢
-                  </button>
-                </div>
-                {isActive && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI measurement — tap again to hide."} Ideal {r.ideal_label ?? (Array.isArray(r.ideal_range) ? r.ideal_range.join("–") : "")} · raw {r.raw_measurement} · {r.view} view{r.measured ? " · ● measured" : ""}</p>}
-              </li>
-              );
-            })}
+                r={r}
+                active={highlightId === r.name}
+                onToggle={() => setHighlightId(highlightId === r.name ? null : r.name)}
+                onOpen={() => onOpenRatio?.(r.name)}
+              />
+            ))}
           </ul>
           {fallbackRatios.length > 10 && (
             <button onClick={() => setShowAllRatios((v) => !v)} className="mt-3 text-xs font-medium underline">

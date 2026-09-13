@@ -2,6 +2,8 @@ import { useState } from "react";
 import { severityColor } from "@/lib/faceiq/types";
 import type { FlawState } from "@/lib/faceiq/flaws";
 
+const EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
+
 function worstSeverity(items: FlawState["contributing"]): "IDEAL" | "GOOD" | "MODERATE" | "SEVERE" | "EXTREME" {
   const order = ["IDEAL", "GOOD", "MODERATE", "SEVERE", "EXTREME"] as const;
   let worst = 0;
@@ -45,7 +47,8 @@ export function FlawAccordion({
           >
             <button
               onClick={() => setOpenId(open ? null : f.def.id)}
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors duration-200 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+              style={{ transitionTimingFunction: EASE }}
             >
               <span className={`shrink-0 rounded border px-2 py-0.5 text-xs ${severityColor(sev)}`}>
                 {f.kind === "flaw" ? sev : "IDEAL"}
@@ -54,10 +57,19 @@ export function FlawAccordion({
               <span className={`shrink-0 text-xs tabular-nums font-medium ${f.kind === "flaw" ? "text-red-600" : "text-emerald-600"}`}>
                 {f.kind === "flaw" ? `${f.impact.toFixed(2)} pts` : `${f.contributing.length} ideal`}
               </span>
-              <span className="shrink-0 text-xs text-zinc-400">{open ? "▲" : "▼"}</span>
+              <span
+                className="shrink-0 text-xs text-zinc-400 transition-transform duration-300"
+                style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transitionTimingFunction: EASE }}
+              >
+                ▼
+              </span>
             </button>
 
-            {open && (
+            <div
+              className={`grid transition-[grid-template-rows] duration-300 ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+              style={{ transitionTimingFunction: EASE }}
+            >
+              <div className="overflow-hidden">
               <div className="border-t px-3 py-3 dark:border-zinc-800">
                 <h5 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{f.def.name}</h5>
                 {f.kind === "flaw" && (
@@ -96,7 +108,8 @@ export function FlawAccordion({
                       <li key={r.name}>
                         <button
                           onClick={() => onOpenRatio(r.name)}
-                          className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/60"
+                          className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors duration-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/60"
+                          style={{ transitionTimingFunction: EASE }}
                         >
                           <span className="min-w-0 flex-1 truncate">{r.name}</span>
                           <span className="shrink-0 text-xs tabular-nums text-zinc-500">{r.value.toFixed(1)}</span>
@@ -107,7 +120,8 @@ export function FlawAccordion({
                   </ul>
                 </div>
               </div>
-            )}
+              </div>
+            </div>
           </li>
         );
       })}

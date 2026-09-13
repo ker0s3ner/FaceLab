@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { RatioOverlay } from "./ratio-overlay";
 import { severityColor, type PillarName, type Ratio } from "@/lib/faceiq/types";
 import {
@@ -65,10 +66,21 @@ export function RatioModal({
   const contributors = contributorsFor(ratio.name);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6" onClick={onClose}>
-      <div
+    <motion.div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6"
+      onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+    >
+      <motion.div
         className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 16 }}
+        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
       >
         {/* header */}
         <div className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white/95 px-4 py-3 dark:bg-zinc-900/95 dark:border-zinc-800 backdrop-blur">
@@ -277,8 +289,8 @@ export function RatioModal({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
