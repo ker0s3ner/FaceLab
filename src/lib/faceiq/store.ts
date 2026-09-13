@@ -31,8 +31,12 @@ function load(): FaceIQState {
         .filter((a): a is Analysis => a !== null);
       if (migrated) {
         const next = { ...parsed, analyses };
-        // persist migrated
-        setTimeout(() => localStorage.setItem(KEY, JSON.stringify(next)), 0);
+        // persist migrated (guarded — quota errors must never crash render)
+        setTimeout(() => {
+          try {
+            localStorage.setItem(KEY, JSON.stringify(next));
+          } catch {}
+        }, 0);
         return next;
       }
       return parsed;
@@ -73,7 +77,27 @@ export function useFaceIQStore() {
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem(KEY, JSON.stringify(state));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state));
+    } catch (err) {
+      // QuotaExceededError from large photo data URLs would blank-screen the
+      // dashboard (error thrown inside passive effect). Fall back to a slim
+      // snapshot without full-res photos so the app stays alive.
+      try {
+        const slim = {
+          ...state,
+          analyses: state.analyses.map((a) => ({
+            ...a,
+            front_photo: a.front_photo.length > 200_000 ? "" : a.front_photo,
+            side_photo: a.side_photo.length > 200_000 ? "" : a.side_photo,
+            landmarkPoints: undefined,
+          })),
+        };
+        localStorage.setItem(KEY, JSON.stringify(slim));
+      } catch {
+        // storage unavailable (private mode etc.) — keep in-memory state only
+      }
+    }
   }, [state, hydrated]);
 
   const addAnalysis = (
