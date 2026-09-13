@@ -10,7 +10,7 @@ import {
   bylineCredits,
 } from "./home-ui";
 
-const title = "FaceIQ Labs — The Self-Improvement System for Your Appearance";
+const title = "FaceLab — The Self-Improvement System for Your Appearance";
 const description =
   "Analyze your face across 100+ metrics, get a personalized improvement plan, and track your progress over time. Side profile analysis is free.";
 
@@ -93,14 +93,11 @@ function Index() {
             href="/"
             className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-100 min-w-0 shrink-0"
           >
-            <span className="brand-display text-lg leading-none">FaceIQ</span>
-            <span className="hidden sm:inline text-xs font-normal tracking-widest uppercase text-zinc-400 dark:text-zinc-500">
-              Labs
-            </span>
+            <span className="brand-display text-lg leading-none">FaceLab</span>
           </a>
 
           <CtaButton href="/login?source=landing_signup" className="shrink-0 px-5 py-2.5 text-sm">
-            Sign In →
+            Sign In
           </CtaButton>
         </div>
       </nav>
@@ -169,7 +166,7 @@ function Index() {
           </SubCopy>
 
           <ActionRow
-            action={<CtaButton href="/login?source=landing_signup">Sign In →</CtaButton>}
+            action={<CtaButton href="/login?source=landing_signup">Sign In</CtaButton>}
             note="All analysis happens inside your dashboard."
           />
         </div>
@@ -306,7 +303,7 @@ function Index() {
         </div>
 
         <div className="relative z-10 max-w-5xl mx-auto">
-          <SectionTitle eyebrow={<Eyebrow>Why FaceIQ Labs</Eyebrow>} title="Not just a score." />
+          <SectionTitle eyebrow={<Eyebrow>Why FaceLab</Eyebrow>} title="Not just a score." />
           <SubCopy className="mt-6">
             Most face analyzers give you a number and stop there. We give you a map.
           </SubCopy>
@@ -370,7 +367,7 @@ function Index() {
             </div>
 
             <ActionRow
-              action={<CtaButton href="/login?source=landing_signup">See your projection →</CtaButton>}
+              action={<CtaButton href="/login?source=landing_signup">See your projection</CtaButton>}
               note="A realistic view of where you start — and where you might go."
             />
             {bylineCredits()}
@@ -419,7 +416,7 @@ function Index() {
             it clearly.
           </p>
           <div className="flex justify-center">
-            <CtaButton href="/login?source=landing_signup">Sign In →</CtaButton>
+            <CtaButton href="/login?source=landing_signup">Sign In</CtaButton>
           </div>
           <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-5 tracking-wide">
             Your future self will thank you.
@@ -445,7 +442,7 @@ function Index() {
             who actually transform treat it as a starting point — and commit to the process.
           </p>
           <p className="text-xs tracking-wide text-zinc-500 mt-6 font-medium">
-            FaceIQ Labs is built for them.
+            FaceLab is built for them.
           </p>
           <SectionDivider />
         </div>
@@ -459,7 +456,7 @@ function Index() {
               href="/"
               className="flex items-center gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100 tracking-tight"
             >
-              <span className="brand-display text-base leading-none">FaceIQ Labs</span>
+              <span className="brand-display text-base leading-none">FaceLab</span>
             </a>
 
             <div className="flex items-center gap-8">
@@ -469,7 +466,7 @@ function Index() {
             </div>
 
             <div className="text-xs text-zinc-400 dark:text-zinc-500 tracking-wide">
-              © 2026 FaceIQ Labs
+              © 2026 FaceLab
             </div>
           </div>
         </div>

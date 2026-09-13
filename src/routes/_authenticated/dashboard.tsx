@@ -78,24 +78,8 @@ function Dashboard() {
       userEmail={userEmail}
       onSignOut={handleSignOut}
       activeTab={activeTab}
+      onTabChange={setActiveTab}
     >
-      {/* tab switcher — simple buttons override shell's tab clicks */}
-      <div className="mb-6 flex gap-2 lg:hidden">
-        {(["overview", "analysis", "plan", "simulate", "facegpt"] as DashboardTab[]).map((t) => (
-          <button key={t} onClick={() => setActiveTab(t)} className={`rounded-full border px-3 py-1.5 text-xs capitalize ${activeTab === t ? "bg-zinc-900 text-white border-zinc-900" : "bg-white border-zinc-200"}`}>
-            {t}
-          </button>
-        ))}
-      </div>
-      {/* desktop tab nav already in shell — wire clicks by rendering custom header? For now duplicate control via state sync */}
-      <div className="hidden lg:flex gap-6 mb-6 border-b border-zinc-200 dark:border-zinc-800 -mt-2">
-        {(["overview", "analysis", "plan", "simulate", "facegpt"] as DashboardTab[]).map((t) => (
-          <button key={t} onClick={() => setActiveTab(t)} className={`relative py-3 text-sm capitalize ${activeTab === t ? "text-zinc-900 dark:text-white" : "text-zinc-500"}`}>
-            {t === "facegpt" ? "Face GPT" : t}
-            {activeTab === t && <span className="absolute inset-x-0 -bottom-px h-0.5 bg-zinc-900 dark:bg-white" />}
-          </button>
-        ))}
-      </div>
 
       {showNewScan && (
         <div className="mb-6 rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 dark:border-zinc-800 dark:bg-zinc-900">
@@ -138,7 +122,6 @@ function Dashboard() {
           {activeTab === "analysis" && <AnalysisTab selected={selected} />}
           {activeTab === "plan" && <PlanTab />}
           {activeTab === "simulate" && <SimulateTab selected={selected} />}
-          {activeTab === "facegpt" && <FaceGPTTab selected={selected} />}
         </>
       )}
 
@@ -150,16 +133,40 @@ function Dashboard() {
 }
 
 function BellCurve({ score }: { score: number }) {
-  const pct = Math.max(2, Math.min(96, ((score / 10) * 100)));
+  const mean = 5.0;
+  const sigma = 1.6;
+  // map score 0-10 to x 10-190
+  const xForScore = (s: number) => 10 + (s / 10) * 180;
+  const gauss = (s: number) => Math.exp(-Math.pow(s - mean, 2) / (2 * sigma * sigma));
+  const maxG = gauss(mean);
+  // build path for 0-10
+  const pts: string[] = [];
+  for (let s = 0; s <= 10; s += 0.2) {
+    const x = xForScore(s);
+    const y = 50 - (gauss(s) / maxG) * 36;
+    pts.push(`${x.toFixed(1)} ${y.toFixed(1)}`);
+  }
+  const d = `M ${pts[0]} ` + pts.slice(1).map((p) => `L ${p}`).join(" ");
+  const markerX = xForScore(Math.max(0, Math.min(10, score)));
+  const markerY = 50 - (gauss(score) / maxG) * 36;
+  const percentile = score >= 9 ? "Top 1%" : score >= 7.5 ? "Top 12%" : score >= 6 ? "Top 30%" : score >= 5 ? "Average" : "Bottom 30%";
   return (
-    <div className="relative h-20 w-full">
-      <svg viewBox="0 0 200 60" className="h-full w-full">
-        <path d="M10 50 C 50 50, 70 10, 100 10 S 150 50, 190 50" fill="none" stroke="#e4e4e7" strokeWidth="1.5" />
-        <path d="M10 50 C 50 50, 70 10, 100 10 S 150 50, 190 50" fill="none" stroke="#18181b" strokeWidth="0" opacity="0.06" />
-        <line x1={pct * 1.8 + 10} y1="8" x2={pct * 1.8 + 10} y2="50" stroke="#18181b" strokeWidth="1.5" strokeDasharray="3 3" />
-        <circle cx={pct * 1.8 + 10} cy="10" r="4" fill="#18181b" />
+    <div className="relative w-full">
+      <svg viewBox="0 0 200 60" className="h-20 w-full">
+        <defs>
+          <linearGradient id="bellGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#18181b" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="#18181b" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={`${d} L 190 50 L 10 50 Z`} fill="url(#bellGrad)" stroke="none" />
+        <path d={d} fill="none" stroke="#a1a1aa" strokeWidth="1.2" />
+        <line x1={markerX} y1={markerY} x2={markerX} y2="50" stroke="#18181b" strokeWidth="1.2" strokeDasharray="3 3" />
+        <circle cx={markerX} cy={markerY} r="4" fill="#18181b" stroke="white" strokeWidth="1.5" />
+        <text x={markerX} y="8" fontSize="5" textAnchor="middle" fill="#71717a">{score.toFixed(1)}</text>
       </svg>
-      <p className="text-center text-[10px] tracking-widest uppercase text-zinc-400">Population — you are here</p>
+      <p className="text-center text-[10px] tracking-widest uppercase text-zinc-400">Population — {percentile} — you are here</p>
+      <div className="mt-1 flex justify-between text-[8px] tabular-nums text-zinc-400"><span>0</span><span>5</span><span>10</span></div>
     </div>
   );
 }
@@ -194,21 +201,33 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
 
   return (
     <div className="space-y-6">
-      {/* 4 pillar cards */}
+      {/* 4 pillar cards — more statistics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {pillars.map((p) => (
-          <div key={p.name} className="rounded-2xl border bg-white p-4 dark:bg-zinc-900 dark:border-zinc-800 flex flex-col">
-            <div className="flex items-center justify-between">
-              <span className="text-xs">▭</span>
-              <span className="text-xs tracking-widest uppercase text-zinc-400">{p.name}</span>
-              <span className="text-zinc-400">→</span>
+        {pillars.map((p) => {
+          const idealCount = p.ratios.filter((r) => r.severity_tag === "IDEAL").length;
+          const total = p.ratios.length || 1;
+          const avg = p.ratios.reduce((s, r) => s + r.value, 0) / total;
+          const severe = p.ratios.filter((r) => r.severity_tag === "SEVERE" || r.severity_tag === "EXTREME").length;
+          return (
+            <div key={p.name} className="rounded-2xl border bg-white p-4 dark:bg-zinc-900 dark:border-zinc-800 flex flex-col">
+              <div className="flex items-center justify-between">
+                <span className="text-xs">▭</span>
+                <span className="text-xs tracking-widest uppercase text-zinc-400">{p.name}</span>
+                <span className="text-zinc-400">→</span>
+              </div>
+              <div className="mt-3 h-12 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 flex items-center justify-center text-xs text-zinc-400">illustration</div>
+              <p className="mt-3 brand-display text-xl">{p.front_score.toFixed(1)} /10</p>
+              <p className="text-xs text-zinc-500">{p.assessment_count} · {p.percentile}</p>
+              <div className="mt-2 grid grid-cols-3 gap-1 text-center text-[11px]">
+                <div className="rounded bg-zinc-50 py-1 dark:bg-zinc-800/50"><div className="font-medium tabular-nums">{idealCount}/{total}</div><div className="text-zinc-400">IDEAL</div></div>
+                <div className="rounded bg-zinc-50 py-1 dark:bg-zinc-800/50"><div className="font-medium tabular-nums">{avg.toFixed(1)}</div><div className="text-zinc-400">Avg</div></div>
+                <div className="rounded bg-zinc-50 py-1 dark:bg-zinc-800/50"><div className="font-medium tabular-nums text-red-600">{severe}</div><div className="text-zinc-400">Need</div></div>
+              </div>
+              <div className="mt-2 h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden"><div className="h-full bg-zinc-900 dark:bg-white" style={{ width: `${(p.front_score / 10) * 100}%` }} /></div>
+              <button className="mt-3 rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700">View {p.name} Ratios</button>
             </div>
-            <div className="mt-3 h-12 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 flex items-center justify-center text-xs text-zinc-400">illustration</div>
-            <p className="mt-3 brand-display text-xl">{p.front_score.toFixed(1)} /10</p>
-            <p className="text-xs text-zinc-500">{p.assessment_count}</p>
-            <button className="mt-3 rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700">View {p.name} Ratios</button>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Overall Score module */}
@@ -234,18 +253,22 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
           <p className="mt-1 text-xs text-zinc-500">{overall.name} · Front {overall.front_score.toFixed(1)} · Side {overall.side_score.toFixed(1)}</p>
         </div>
 
-        <div className="mt-6 grid sm:grid-cols-[1fr_1fr_1.2fr] gap-4 items-start">
-          <div className="rounded-xl border overflow-hidden dark:border-zinc-800">
-            <img src={selected.front_photo} alt="front" className="aspect-[3/4] w-full object-cover" />
-            <div className="p-2 flex justify-between text-xs"><span>Front</span><span className="font-medium">{overall.front_score.toFixed(1)}</span></div>
+        <div className="mt-6 grid sm:grid-cols-[1fr_1fr_1.2fr] gap-4 items-stretch">
+          <div className="rounded-xl border overflow-hidden dark:border-zinc-800 flex flex-col">
+            <div className="flex-1 aspect-[3/4] overflow-hidden bg-zinc-100"><img src={selected.front_photo} alt="front" className="h-full w-full object-cover" /></div>
+            <div className="p-2 flex justify-between text-xs border-t dark:border-zinc-800"><span>Front</span><span className="font-medium tabular-nums">{overall.front_score.toFixed(1)}</span></div>
           </div>
-          <div className="rounded-xl border overflow-hidden dark:border-zinc-800">
-            <img src={selected.side_photo} alt="side" className="aspect-[3/4] w-full object-cover" />
-            <div className="p-2 flex justify-between text-xs"><span>Side</span><span className="rounded bg-zinc-900 px-2 py-0.5 text-white dark:bg-white dark:text-zinc-900">{overall.percentile}</span></div>
+          <div className="rounded-xl border overflow-hidden dark:border-zinc-800 flex flex-col">
+            <div className="flex-1 aspect-[3/4] overflow-hidden bg-zinc-100"><img src={selected.side_photo} alt="side" className="h-full w-full object-cover" /></div>
+            <div className="p-2 flex justify-between text-xs border-t dark:border-zinc-800"><span>Side</span><span className="rounded bg-zinc-900 px-2 py-0.5 text-white dark:bg-white dark:text-zinc-900 tabular-nums">{overall.side_score.toFixed(1)} · {overall.percentile}</span></div>
           </div>
-          <div className="rounded-xl border p-3 dark:border-zinc-800">
+          <div className="rounded-xl border p-3 dark:border-zinc-800 flex flex-col">
             <p className="text-xs tracking-widest uppercase text-zinc-400">Where you stand</p>
             <BellCurve score={selected.overall_score} />
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded bg-zinc-50 px-2 py-1 text-center dark:bg-zinc-800/50"><span className="text-zinc-400">Front</span> <span className="font-medium">{overall.front_score.toFixed(1)}</span></div>
+              <div className="rounded bg-zinc-50 px-2 py-1 text-center dark:bg-zinc-800/50"><span className="text-zinc-400">Side</span> <span className="font-medium">{overall.side_score.toFixed(1)}</span></div>
+            </div>
           </div>
         </div>
       </Card>
@@ -1171,7 +1194,12 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
   const analyzePhotos = async () => {
     if (!frontImage || !sideImage) return;
     setIsAnalyzing(true); setError(null); setResult(null);
-    try { const data = await runAnalysis({ data: { frontImage, sideImage } }); setResult(data); } catch (err) { setError(err instanceof Error ? err.message : "Failed"); } finally { setIsAnalyzing(false); }
+    try {
+      const data = await runAnalysis({ data: { frontImage, sideImage } });
+      setResult(data);
+      // auto-save for user request: automatically save photos
+      onSave(frontImage, sideImage, data);
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed"); } finally { setIsAnalyzing(false); }
   };
   const reset = () => { setFrontImage(null); setSideImage(null); setResult(null); setError(null); };
   const handleSave = () => { if (!frontImage || !sideImage || !result) return; onSave(frontImage, sideImage, result); reset(); };

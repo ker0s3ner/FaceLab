@@ -1,14 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import type { Analysis } from "@/lib/faceiq/types";
 
-export type DashboardTab = "overview" | "analysis" | "plan" | "simulate" | "facegpt";
+export type DashboardTab = "overview" | "analysis" | "plan" | "simulate";
 
 const TABS: { id: DashboardTab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "analysis", label: "Analysis" },
   { id: "plan", label: "Plan" },
   { id: "simulate", label: "Simulate" },
-  { id: "facegpt", label: "Face GPT" },
 ];
 
 export function DashboardShell({
@@ -22,6 +21,7 @@ export function DashboardShell({
   userEmail,
   onSignOut,
   activeTab,
+  onTabChange,
   children,
 }: {
   analyses: Analysis[];
@@ -34,6 +34,7 @@ export function DashboardShell({
   userEmail: string;
   onSignOut: () => void;
   activeTab: DashboardTab;
+  onTabChange: (tab: DashboardTab) => void;
   children: React.ReactNode;
 }) {
   const canCompare = analyses.length >= 2;
@@ -44,8 +45,7 @@ export function DashboardShell({
       <aside className="hidden lg:flex w-[400px] shrink-0 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex h-14 items-center gap-2 border-b border-zinc-200 px-5 dark:border-zinc-800">
           <Link to="/" className="flex items-center gap-2">
-            <span className="brand-display text-lg leading-none text-zinc-900 dark:text-zinc-100">FaceIQ</span>
-            <span className="text-xs tracking-widest uppercase text-zinc-400">Labs</span>
+            <span className="brand-display text-lg leading-none text-zinc-900 dark:text-zinc-100">FaceLab</span>
           </Link>
           <span className="ml-auto text-zinc-400">‹›</span>
         </div>
@@ -115,15 +115,7 @@ export function DashboardShell({
           )}
         </div>
 
-        <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
-          <p className="text-[11px] tracking-widest uppercase text-zinc-400">Explore</p>
-          <nav className="mt-3 space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
-            <a href="#" className="flex items-center gap-2 hover:text-zinc-900 dark:hover:text-zinc-100"> Partnership</a>
-            <Link to="/" className="flex items-center gap-2 hover:text-zinc-900"> Creator League</Link>
-            <a href="#" className="flex items-center gap-2 hover:text-zinc-900"> Research</a>
-            <a href="#" className="flex items-center gap-2 hover:text-zinc-900"> Celebs</a>
-          </nav>
-        </div>
+        {/* Explore removed per user request */}
       </aside>
 
       {/* main column */}
@@ -134,6 +126,7 @@ export function DashboardShell({
             {TABS.map((t) => (
               <button
                 key={t.id}
+                onClick={() => onTabChange(t.id)}
                 className={`relative py-3 text-sm font-medium whitespace-nowrap ${activeTab === t.id ? "text-zinc-900 dark:text-white" : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400"}`}
               >
                 {t.label}
