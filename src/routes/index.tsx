@@ -8,7 +8,7 @@ import {
   ActionRow,
   EvidenceCard,
   bylineCredits,
-} from "./home-ui";
+} from "./-home-ui";
 
 const title = "FaceLab — The Self-Improvement System for Your Appearance";
 const description =

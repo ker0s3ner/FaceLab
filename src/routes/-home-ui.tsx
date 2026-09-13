@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 
-export { bylineCredits } from "./home-assets";
+export { bylineCredits } from "./-home-assets";
 
 export function CtaButton({
   children,
