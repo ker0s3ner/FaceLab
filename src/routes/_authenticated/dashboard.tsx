@@ -39,9 +39,14 @@ function Dashboard() {
   const queryClient = useQueryClient();
   const { state, addAnalysis, select, clearAll } = useFaceIQStore();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [analysisPillar, setAnalysisPillar] = useState<string>("Harmony");
   const [showNewScan, setShowNewScan] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const goToPillar = (pillar: string) => {
+    setAnalysisPillar(pillar);
+    setActiveTab("analysis");
+  };
 
   const candidate = state.analyses.find((a) => a.id === state.selectedId) ?? state.analyses[state.analyses.length - 1] ?? null;
   // Old/partial saved analyses can lack pillars entirely, which crashed the page.
@@ -90,7 +95,7 @@ function Dashboard() {
             <button onClick={() => setShowNewScan(false)} className="rounded-full border px-3 py-1 text-xs dark:border-zinc-700">Close</button>
           </div>
           <div className="mt-4">
-            <AnalyzerWithSave onSave={(front, side, result) => { addAnalysis(front, side, result); setShowNewScan(false); }} />
+            <AnalyzerWithSave onSave={(front, side, result, extra) => { addAnalysis(front, side, result, extra); setShowNewScan(false); }} />
           </div>
         </div>
       )}
@@ -120,9 +125,9 @@ function Dashboard() {
 
       {selected && !showNewScan && (
         <>
-          {activeTab === "overview" && <OverviewTab selected={selected} />}
-          {activeTab === "analysis" && <AnalysisTab selected={selected} />}
-          {activeTab === "plan" && <PlanTab />}
+          {activeTab === "overview" && <OverviewTab selected={selected} onViewPillar={goToPillar} />}
+          {activeTab === "analysis" && <AnalysisTab key={analysisPillar} selected={selected} initialPillar={analysisPillar} />}
+          {activeTab === "plan" && <PlanTab selected={selected} />}
           {activeTab === "simulate" && <SimulateTab selected={selected} />}
         </>
       )}
@@ -134,14 +139,23 @@ function Dashboard() {
   );
 }
 
-function BellCurve({ score }: { score: number }) {
+function percentileFor(score: number) {
+  if (score >= 9) return "Top 1%";
+  if (score >= 8) return "Top 5%";
+  if (score >= 7.5) return "Top 12%";
+  if (score >= 7) return "Top 20%";
+  if (score >= 6) return "Top 30%";
+  if (score >= 5) return "Average";
+  if (score >= 4) return "Bottom 30%";
+  return "Bottom 14%";
+}
+
+function BellCurve({ score, history = [], label = "You" }: { score: number; history?: number[]; label?: string }) {
   const mean = 5.0;
   const sigma = 1.6;
-  // map score 0-10 to x 10-190
-  const xForScore = (s: number) => 10 + (s / 10) * 180;
+  const xForScore = (s: number) => 10 + (Math.max(0, Math.min(10, s)) / 10) * 180;
   const gauss = (s: number) => Math.exp(-Math.pow(s - mean, 2) / (2 * sigma * sigma));
   const maxG = gauss(mean);
-  // build path for 0-10
   const pts: string[] = [];
   for (let s = 0; s <= 10; s += 0.2) {
     const x = xForScore(s);
@@ -149,32 +163,49 @@ function BellCurve({ score }: { score: number }) {
     pts.push(`${x.toFixed(1)} ${y.toFixed(1)}`);
   }
   const d = `M ${pts[0]} ` + pts.slice(1).map((p) => `L ${p}`).join(" ");
-  const markerX = xForScore(Math.max(0, Math.min(10, score)));
-  const markerY = 50 - (gauss(score) / maxG) * 36;
-  const percentile = score >= 9 ? "Top 1%" : score >= 7.5 ? "Top 12%" : score >= 6 ? "Top 30%" : score >= 5 ? "Average" : "Bottom 30%";
-  const gradId = `bellGrad-${score.toFixed(1).replace(".", "_")}`;
+  const [hover, setHover] = useState<number | null>(null);
+  const shown = hover ?? score;
+  const markerX = xForScore(shown);
+  const markerY = 50 - (gauss(shown) / maxG) * 36;
+  const percentile = percentileFor(shown);
+  const gradId = `bellGrad-${label.replace(/\W/g, "")}`;
+  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+    const fx = (e.clientX - rect.left) / rect.width; // 0-1 in viewBox terms
+    const s = ((fx * 200 - 10) / 180) * 10;
+    setHover(Math.max(0, Math.min(10, s)));
+  };
   return (
     <div className="relative w-full">
-      <svg viewBox="0 0 200 60" className="h-20 w-full">
+      <svg viewBox="0 0 200 60" className="h-24 w-full cursor-crosshair" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#18181b" stopOpacity="0.08" />
+            <stop offset="0%" stopColor="#18181b" stopOpacity="0.10" />
             <stop offset="100%" stopColor="#18181b" stopOpacity="0" />
           </linearGradient>
         </defs>
         <path d={`${d} L 190 50 L 10 50 Z`} fill={`url(#${gradId})`} stroke="none" />
         <path d={d} fill="none" stroke="#a1a1aa" strokeWidth="1.2" />
+        {/* history dots */}
+        {history.map((h, i) => {
+          const hx = xForScore(h);
+          const hy = 50 - (gauss(h) / maxG) * 36;
+          return <circle key={i} cx={hx} cy={hy} r="2" fill="none" stroke="#71717a" strokeWidth="1" opacity="0.7" />;
+        })}
         <line x1={markerX} y1={markerY} x2={markerX} y2="50" stroke="#18181b" strokeWidth="1.2" strokeDasharray="3 3" />
-        <circle cx={markerX} cy={markerY} r="4" fill="#18181b" stroke="white" strokeWidth="1.5" />
-        <text x={markerX} y="8" fontSize="5" textAnchor="middle" fill="#71717a">{score.toFixed(1)}</text>
+        <circle cx={markerX} cy={markerY} r="4.5" fill="#18181b" stroke="white" strokeWidth="1.5" />
+        <text x={markerX} y="8" fontSize="5.5" textAnchor="middle" fill="#18181b" fontWeight="bold">{shown.toFixed(1)}</text>
       </svg>
-      <p className="text-center text-[10px] tracking-widest uppercase text-zinc-400">Population — {percentile} — you are here</p>
-      <div className="mt-1 flex justify-between text-[8px] tabular-nums text-zinc-400"><span>0</span><span>5</span><span>10</span></div>
+      <p className="text-center text-[10px] tracking-widest uppercase text-zinc-400">
+        {hover !== null ? `Inspecting ${hover.toFixed(1)} — ${percentile}` : `Population — ${percentile} — ${label} are here`}
+      </p>
+      <div className="mt-1 flex justify-between text-[8px] tabular-nums text-zinc-400"><span>0</span><span>2.5</span><span>5</span><span>7.5</span><span>10</span></div>
+      {history.length > 0 && <p className="mt-1 text-center text-[10px] text-zinc-400">○ {history.length} past scan{history.length > 1 ? "s" : ""} plotted — hover to inspect</p>}
     </div>
   );
 }
 
-function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof useFaceIQStore>["state"]["analyses"][number]> }) {
+function OverviewTab({ selected, onViewPillar }: { selected: NonNullable<ReturnType<typeof useFaceIQStore>["state"]["analyses"][number]>; onViewPillar?: (pillar: string) => void }) {
   const { state, setState } = useFaceIQStore();
   const pillars = selected.pillars;
   const [overallPillar, setOverallPillar] = useState<string>("Harmony");
@@ -220,7 +251,11 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
                 <span className="text-xs tracking-widest uppercase text-zinc-400">{p.name}</span>
                 <span className="text-zinc-400">→</span>
               </div>
-              <div className="mt-3 h-12 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 flex items-center justify-center text-xs text-zinc-400">illustration</div>
+              <div className="mt-3 h-12 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 flex items-end justify-center gap-1 px-3 pb-2 pt-2">
+                {p.ratios.slice(0, 10).map((r) => (
+                  <div key={r.name} title={`${r.name}: ${r.value.toFixed(1)}`} className={`w-full rounded-sm ${r.severity_tag === "IDEAL" ? "bg-emerald-500" : r.severity_tag === "GOOD" ? "bg-lime-500" : r.severity_tag === "MODERATE" ? "bg-amber-400" : "bg-red-400"}`} style={{ height: `${Math.max(8, (r.value / 10) * 100)}%` }} />
+                ))}
+              </div>
               <p className="mt-3 brand-display text-xl">{p.front_score.toFixed(1)} /10</p>
               <p className="text-xs text-zinc-500">{p.assessment_count} · {p.percentile}</p>
               <div className="mt-2 grid grid-cols-3 gap-1 text-center text-[11px]">
@@ -229,7 +264,7 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
                 <div className="rounded bg-zinc-50 py-1 dark:bg-zinc-800/50"><div className="font-medium tabular-nums text-red-600">{severe}</div><div className="text-zinc-400">Need</div></div>
               </div>
               <div className="mt-2 h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden"><div className="h-full bg-zinc-900 dark:bg-white" style={{ width: `${(p.front_score / 10) * 100}%` }} /></div>
-              <button className="mt-3 rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700">View {p.name} Ratios</button>
+              <button onClick={() => onViewPillar?.(p.name)} className="mt-3 rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-medium hover:bg-zinc-900 hover:text-white dark:border-zinc-700 dark:hover:bg-white dark:hover:text-zinc-900 transition-colors">View {p.name} Ratios →</button>
             </div>
           );
         })}
@@ -278,12 +313,13 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
             <div className="p-2 flex justify-between text-xs border-t dark:border-zinc-800"><span>Side</span><span className="rounded bg-zinc-900 px-2 py-0.5 text-white dark:bg-white dark:text-zinc-900 tabular-nums">{overall.side_score.toFixed(1)} · {overall.percentile}</span></div>
           </div>
           <div className="rounded-xl border p-3 dark:border-zinc-800 flex flex-col">
-            <p className="text-xs tracking-widest uppercase text-zinc-400">Where you stand</p>
-            <BellCurve score={selected.overall_score} />
+            <p className="text-xs tracking-widest uppercase text-zinc-400">Where you stand — {overall.name}</p>
+            <BellCurve score={overall.front_score} history={state.analyses.map((a) => a.pillars.find((p) => p.name === overall.name)?.front_score ?? a.overall_score)} label={overall.name} />
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded bg-zinc-50 px-2 py-1 text-center dark:bg-zinc-800/50"><span className="text-zinc-400">Front</span> <span className="font-medium">{overall.front_score.toFixed(1)}</span></div>
-              <div className="rounded bg-zinc-50 px-2 py-1 text-center dark:bg-zinc-800/50"><span className="text-zinc-400">Side</span> <span className="font-medium">{overall.side_score.toFixed(1)}</span></div>
+              <div className="rounded bg-zinc-50 px-2 py-1 text-center dark:bg-zinc-800/50"><span className="text-zinc-400">Front</span> <span className="font-medium tabular-nums">{overall.front_score.toFixed(1)}</span></div>
+              <div className="rounded bg-zinc-50 px-2 py-1 text-center dark:bg-zinc-800/50"><span className="text-zinc-400">Side</span> <span className="font-medium tabular-nums">{overall.side_score.toFixed(1)}</span></div>
             </div>
+            <p className="mt-2 text-[11px] text-zinc-400">Hover the curve to inspect any score · ○ = your past scans · switches with pillar tabs above</p>
           </div>
         </div>
       </Card>
@@ -447,8 +483,67 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
   );
 }
 
-function AnalysisTab({ selected }: { selected: any }) {
-  const [pillar, setPillar] = useState("Harmony");
+function LandmarkPhoto({ src, points, enriched, highlightId, setHighlightId, landmarkPos, view, pillar }: {
+  src: string;
+  points?: { x: number; y: number }[];
+  enriched: any[];
+  highlightId: string | null;
+  setHighlightId: (v: string | null) => void;
+  landmarkPos: Record<string, { x: number; y: number }>;
+  view: string;
+  pillar: string;
+}) {
+  const [meshOn, setMeshOn] = useState(true);
+  const [hoverPt, setHoverPt] = useState<number | null>(null);
+  const shown = (points ?? []).filter((_, i) => i % 2 === 0).slice(0, 160);
+  return (
+    <div className="relative">
+      <img src={src} alt={`${pillar} ${view}`} className="aspect-[3/4] w-full object-cover bg-zinc-100" />
+      {/* real mesh dots */}
+      {meshOn && shown.length > 0 && (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full pointer-events-none">
+          {shown.map((p, i) => (
+            <circle key={i} cx={p.x * 100} cy={p.y * 100} r="0.45" fill="#22c55e" opacity="0.55" />
+          ))}
+        </svg>
+      )}
+      {/* ratio markers anchored to anatomy */}
+      {enriched.slice(0, 8).map((r: any) => {
+        const pos = landmarkPos[r.name] ?? { x: 50, y: 50 };
+        return (
+          <button
+            key={r.name}
+            onClick={() => setHighlightId(highlightId === r.name ? null : r.name)}
+            className={`absolute flex h-6 w-6 items-center justify-center rounded-full border-2 bg-white text-[10px] font-bold shadow transition-colors ${highlightId === r.name ? "border-emerald-500 text-emerald-600" : "border-zinc-300 text-zinc-500"}`}
+            style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }}
+            title={`${r.name} — ${r.raw_measurement}`}
+          >
+            ?
+          </button>
+        );
+      })}
+      {highlightId && (() => {
+        const pos = landmarkPos[highlightId] ?? { x: 50, y: 50 };
+        return <div className="absolute h-0.5 w-16 bg-emerald-400/80 pointer-events-none" style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }} />;
+      })()}
+      {highlightId && (
+        <div className="absolute left-3 top-12 max-w-[70%] rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white dark:bg-white dark:text-zinc-900 shadow">
+          {highlightId} — {enriched.find((r: any) => r.name === highlightId)?.raw_measurement ?? ""} · {enriched.find((r: any) => r.name === highlightId)?.description ?? ""}
+          <div className="mt-1 h-0.5 w-full bg-emerald-400" />
+        </div>
+      )}
+      <div className="absolute right-3 top-3 flex gap-2">
+        <button onClick={() => setMeshOn((v) => !v)} className="flex h-8 items-center rounded-full bg-white/90 px-3 text-xs font-medium text-zinc-700 shadow dark:bg-zinc-800 dark:text-zinc-200">
+          {meshOn ? `Mesh on (${shown.length})` : "Mesh off"}
+        </button>
+      </div>
+      <span className="absolute bottom-3 left-3 text-[10px] tracking-widest uppercase text-white/70">FaceLab · {shown.length ? `${shown.length} pts` : "no mesh"}</span>
+    </div>
+  );
+}
+
+function AnalysisTab({ selected, initialPillar }: { selected: any; initialPillar?: string }) {
+  const [pillar, setPillar] = useState(initialPillar ?? "Harmony");
   const [view, setView] = useState<"front" | "side">("front");
   const [showAllRatios, setShowAllRatios] = useState(false);
   const [strengthExtra, setStrengthExtra] = useState(false);
@@ -537,41 +632,18 @@ function AnalysisTab({ selected }: { selected: any }) {
 
       {/* Main 3-col layout §5.3 */}
       <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-6">
-        {/* Left large photo panel */}
+        {/* Left large photo panel — real MediaPipe mesh overlay */}
         <Card className="overflow-hidden p-0">
-          <div className="relative">
-            <img src={view === "front" ? selected.front_photo : selected.side_photo} alt={`${pillar} ${view}`} className="aspect-[3/4] w-full object-cover bg-zinc-100" />
-            {/* gear top-right */}
-            <button className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-zinc-600 shadow dark:bg-zinc-800 dark:text-zinc-300">⚙</button>
-            {/* landmark overlay — anatomically mapped, not random */}
-            {enriched.slice(0, 6).map((r: any) => {
-              const pos = landmarkPos[r.name] ?? { x: 50, y: 50 };
-              return (
-                <button
-                  key={r.name}
-                  onClick={() => setHighlightId(highlightId === r.name ? null : r.name)}
-                  className={`absolute flex h-6 w-6 items-center justify-center rounded-full border-2 bg-white text-[10px] font-bold shadow transition-colors ${highlightId === r.name ? "border-emerald-500 text-emerald-600" : "border-zinc-300 text-zinc-500"}`}
-                  style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }}
-                  title={r.name}
-                >
-                  ?
-                </button>
-              );
-            })}
-            {/* measurement line for highlighted */}
-            {highlightId && (() => {
-              const pos = landmarkPos[highlightId] ?? { x: 50, y: 50 };
-              return <div className="absolute h-0.5 w-16 bg-emerald-400/70 pointer-events-none" style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }} />;
-            })()}
-            {highlightId && (
-              <div className="absolute left-3 top-12 rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white dark:bg-white dark:text-zinc-900 shadow">
-                {highlightId} — measurement line overlay
-                <div className="mt-1 h-0.5 w-full bg-emerald-400" />
-              </div>
-            )}
-            {/* watermark */}
-            <span className="absolute bottom-3 left-3 text-[10px] tracking-widest uppercase text-white/70">FaceLab</span>
-          </div>
+          <LandmarkPhoto
+            src={view === "front" ? selected.front_photo : selected.side_photo}
+            points={view === "front" ? selected.landmarkPoints?.front : selected.landmarkPoints?.side}
+            enriched={enriched}
+            highlightId={highlightId}
+            setHighlightId={setHighlightId}
+            landmarkPos={landmarkPos}
+            view={view}
+            pillar={pillar}
+          />
           <div className="flex items-end justify-between p-4">
             <div>
               <p className="text-xs tracking-widest uppercase text-zinc-400">{view} Harmony</p>
@@ -587,13 +659,12 @@ function AnalysisTab({ selected }: { selected: any }) {
         {/* Right ratios panel */}
         <Card className="p-4">
           <button onClick={() => setShowExplainer((v) => !v)} className="flex w-full items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800/50">
-            <span className="font-medium">Understanding Harmony</span>
+            <span className="font-medium">Understanding {pillar}</span>
             <span className="text-zinc-400">{showExplainer ? "−" : "+"}</span>
           </button>
-          {showExplainer && <p className="mt-2 text-xs leading-relaxed text-zinc-500">Harmony measures facial proportional balance — widths, thirds, and symmetry across front and side views. Ideal ranges are calibrated by gender/ethnicity.</p>}
-          <a href="#facegpt" className="mt-2 inline-block text-xs font-medium text-zinc-900 underline dark:text-white">Ask FaceGPT →</a>
+          {showExplainer && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{pillar === "Harmony" ? "Harmony measures facial proportional balance — widths, thirds, and symmetry across front and side views." : pillar === "Angularity" ? "Angularity measures jawline, cheekbone and brow definition — bone structure sharpness." : pillar === "Dimorphism" ? "Dimorphism measures gendered traits — brow, jaw, nose and chin masculinity/femininity signals." : "Features measures eyes, nose, lips and skin detail — fine feature quality."} Ideal ranges calibrated by gender/ethnicity. ● = measured from your photo mesh.</p>}
 
-          <h4 className="mt-4 font-medium">Your {view} Ratios</h4>
+          <h4 className="mt-4 font-medium">Your {view} Ratios <span className="ml-1 text-xs font-normal text-zinc-400">{fallbackRatios.length} measured</span></h4>
           <ul className="mt-3 space-y-2 pr-1">
             {enriched.map((r: any) => (
               <li
@@ -614,7 +685,7 @@ function AnalysisTab({ selected }: { selected: any }) {
                   </div>
                   <span className="text-zinc-400">{highlightId === r.name ? "−" : "›"}</span>
                 </div>
-                {highlightId === r.name && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI measurement — tap again to hide."} Ideal {Array.isArray(r.ideal_range) ? r.ideal_range.join("–") : ""} · {r.view} view</p>}
+                {highlightId === r.name && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI measurement — tap again to hide."} Ideal {r.ideal_label ?? (Array.isArray(r.ideal_range) ? r.ideal_range.join("–") : "")} · raw {r.raw_measurement} · {r.view} view{r.measured ? " · ● measured" : ""}</p>}
               </li>
             ))}
           </ul>
@@ -694,17 +765,17 @@ function AnalysisTab({ selected }: { selected: any }) {
   );
 }
 
-function PlanTab() {
-  const { state, addPlanAction, removePlanAction } = useFaceIQStore();
+function PlanTab({ selected }: { selected?: any }) {
+  const { state, addPlanAction, removePlanAction, reorderPlan } = useFaceIQStore();
   const [picker, setPicker] = useState(false);
   const [filter, setFilter] = useState("");
   const [planTab, setPlanTab] = useState("Overall");
   const [timelineTab, setTimelineTab] = useState<"Timeline" | "Impact" | "Ratio Impact">("Timeline");
   const [dragIdx, setDragIdx] = useState<number | null>(null);
 
-  // Find selected analysis for photos/graph (first)
-  const selected = state.analyses[state.analyses.length - 1];
-  const current = selected?.overall_score ?? 5.0;
+  // Use the actually-selected analysis, not just the last one
+  const active = selected ?? state.analyses[state.analyses.length - 1];
+  const current = active?.overall_score ?? 5.0;
   const deltas = state.planActions.map((a) => TREATMENTS.find((t) => t.name === a.treatment)?.score_delta ?? 0);
   const totalDelta = deltas.reduce((s, v) => s + v, 0);
   const target = Math.min(10, current + totalDelta);
@@ -716,26 +787,7 @@ function PlanTab() {
   const handleDragStart = (idx: number) => setDragIdx(idx);
   const handleDrop = (idx: number) => {
     if (dragIdx === null || dragIdx === idx) return;
-    const arr = [...state.planActions];
-    const [moved] = arr.splice(dragIdx, 1);
-    if (!moved) return;
-    arr.splice(idx, 0, moved);
-    // persist reorder by mutating store directly via setState
-    const reordered = arr.map((a, i) => ({ ...a, order_index: i }));
-    // use internal setState via hook — we access via closure: mutate by re-adding?
-    // Simplified: clear and re-add in order (store has no reorder exposed here, so we hack via localStorage)
-    // Instead call reorder by splicing through store's internal — we expose via temporary
-    // We'll directly update via useFaceIQStore's internal setState by writing to localStorage
-    // For simplicity, just mutate state via window update
-    try {
-      const raw = localStorage.getItem("faceiq_state_v2");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        parsed.planActions = reordered;
-        localStorage.setItem("faceiq_state_v2", JSON.stringify(parsed));
-        location.reload();
-      }
-    } catch {}
+    reorderPlan(dragIdx, idx);
     setDragIdx(null);
   };
 
@@ -763,25 +815,27 @@ function PlanTab() {
           <div><p className="text-[11px] tracking-widest uppercase text-zinc-400">Potential</p><p className="brand-display text-2xl tabular-nums">{potential.toFixed(2)}</p><p className="text-xs text-zinc-500">Maximum achievable</p></div>
         </div>
 
-        {selected && (
+        {active && (
           <div className="mt-4 grid sm:grid-cols-[auto_1fr] gap-4 items-start">
             <div className="flex gap-2">
-              <img src={selected.front_photo} alt="front" className="h-20 w-16 rounded-lg object-cover" />
-              <img src={selected.side_photo} alt="side" className="h-20 w-16 rounded-lg object-cover" />
+              <img src={active.front_photo} alt="front" className="h-20 w-16 rounded-lg object-cover" />
+              <img src={active.side_photo} alt="side" className="h-20 w-16 rounded-lg object-cover" />
             </div>
             <div className="rounded-xl border p-3 dark:border-zinc-800">
               <div className="flex gap-2 text-[10px] tracking-widest uppercase text-zinc-400">
-                <button className="rounded bg-zinc-900 px-2 py-1 text-white dark:bg-white dark:text-zinc-900">Population</button>
-                <button className="px-2 py-1">Timeline</button>
-                <button className="px-2 py-1">Impact</button>
+                {(["Population", "Timeline", "Impact"] as const).map((v) => (
+                  <button key={v} onClick={() => setTimelineTab(v === "Population" ? "Timeline" : v as any)} className={`rounded px-2 py-1 ${timelineTab === v || (v === "Population" && timelineTab === "Timeline") ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" : ""}`}>{v}</button>
+                ))}
               </div>
               <div className="mt-3 relative h-16">
                 <svg viewBox="0 0 300 60" className="h-full w-full">
                   <path d="M10 45 C 60 45, 80 10, 150 10 S 240 45, 290 45" fill="none" stroke="#e4e4e7" strokeWidth="1.5" />
+                  <circle cx={140 + (current - 5) * 12} cy="12" r="2.5" fill="none" stroke="#71717a" strokeWidth="1.5" />
                   <circle cx={140 + (target - 5) * 12} cy="12" r="3" fill="#18181b" />
-                  <text x={140 + (target - 5) * 12} y="8" fontSize="6" textAnchor="middle" fill="#71717a">{target.toFixed(2)} · Top 0.018%</text>
+                  <text x={140 + (target - 5) * 12} y="8" fontSize="6" textAnchor="middle" fill="#71717a">{target.toFixed(2)} · {percentileFor(target)}</text>
                 </svg>
               </div>
+              <p className="mt-1 text-[11px] text-zinc-400">○ current {current.toFixed(2)} · ● target {target.toFixed(2)} · {state.planActions.length} actions driving +{totalDelta.toFixed(2)}</p>
             </div>
           </div>
         )}
@@ -920,25 +974,19 @@ function SimulateTab({ selected }: { selected: any }) {
   const afterScore = Math.min(10, selected.overall_score + t.score_delta + movements.reduce((s, m) => s + m.value * 0.02, 0) * 0.1);
   const sideAfter = Math.min(10, (selected.pillars.find((x: any) => x.name === "Features")?.side_score ?? 5) + t.score_delta * 0.6);
 
-  const ratiosMoved = [
-    { name: "Nasal W to H ratio", before: "1.02x", after: "1.06x", tag: "Ideal" },
-    { name: "Browridge Inclination Angle", before: "23°", after: "28°", tag: "Ideal" },
-    { name: "Holdaway H Line", before: "-1.76mm", after: "0.2mm", tag: "Ideal" },
-    { name: "Lower Lip E-Line Position", before: "5.9mm", after: "4.0mm", tag: "Ideal" },
-    { name: "Z Angle", before: "71.0°", after: "79.2°", tag: "Ideal" },
-    { name: "Facial Convexity / Glabella", before: "166.8°", after: "171.9°", tag: "Ideal" },
-  ];
+  // Live ratiosMoved: worst ratios from the actual analysis improve toward ideal
+  const worst = selected.pillars.flatMap((p: any) => p.ratios).filter((r: any) => r.severity_tag === "SEVERE" || r.severity_tag === "EXTREME").slice(0, 6);
+  const ratiosMoved = (worst.length ? worst : selected.pillars.flatMap((p: any) => p.ratios).slice(0, 6)).map((r: any) => ({
+    name: r.name,
+    before: r.raw_measurement,
+    after: r.ideal_label ?? r.raw_measurement,
+    tag: "Ideal" as const,
+  }));
 
   const surgical = TREATMENTS.filter((x) => x.category === "surgical");
   const nonsurgical = TREATMENTS.filter((x) => x.category === "non-surgical");
 
-  const ratioTable = [
-    { name: "Total Facial Width to Height Ratio", raw: "1.32x", score: 7.2 },
-    { name: "Lower Third Proportion", raw: "12.58%", score: 6.8 },
-    { name: "Middle Third", raw: "34.50%", score: 6.5 },
-    { name: "Nasal Projection", raw: "0.72x", score: 5.9 },
-    { name: "Deviation of IAA & JFA", raw: "3.89°", score: 4.2 },
-  ].sort((a, b) => {
+  const ratioTable = selected.pillars.flatMap((p: any) => p.ratios.map((r: any) => ({ name: r.name, raw: r.raw_measurement, score: r.value }))).slice(0, 12).sort((a: any, b: any) => {
     if (ratioFilter === "Lowest") return a.score - b.score;
     if (ratioFilter === "Highest") return b.score - a.score;
     if (ratioFilter === "Improved") return b.score - a.score;
@@ -994,7 +1042,7 @@ function SimulateTab({ selected }: { selected: any }) {
             <div>
               <p className="text-xs tracking-widest uppercase text-zinc-400">Ratios Moved</p>
               <ul className="mt-2 space-y-1 text-xs">
-                {ratiosMoved.slice(0, 4).map((r) => (
+                {ratiosMoved.slice(0, 4).map((r: { name: string; before: string; after: string; tag: string }) => (
                   <li key={r.name} className="flex justify-between gap-2"><span className="truncate">{r.name}</span><span className="tabular-nums">{r.before} → {r.after}</span><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">{r.tag}</span></li>
                 ))}
               </ul>
@@ -1115,7 +1163,7 @@ function SimulateTab({ selected }: { selected: any }) {
               ))}
             </div>
             <ul className="mt-3 space-y-2">
-              {ratioTable.map((r) => (
+              {ratioTable.map((r: { name: string; raw: string; score: number }) => (
                 <li key={r.name} className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm dark:border-zinc-800">
                   <span className="flex-1 truncate">{r.name}</span>
                   <span className="rounded bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800">{r.raw}</span>
@@ -1238,7 +1286,7 @@ function FaceGPTTab({ selected }: { selected: any }) {
   );
 }
 
-function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, result: AnalysisResult) => void }) {
+function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, result: AnalysisResult, extra?: { measurements?: { front: { name: string; raw: string; value: number }[]; side: { name: string; raw: string; value: number }[] }; points?: { front: { x: number; y: number }[]; side: { x: number; y: number }[] } }) => void }) {
   const runAnalysis = useServerFn(analyzeFace);
   const [frontImage, setFrontImage] = useState<string | null>(null);
   const [sideImage, setSideImage] = useState<string | null>(null);
@@ -1253,16 +1301,26 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
     try {
       setStatusText("Detecting 478 facial landmarks…");
       let measurements: { front: { name: string; value: number; unit: "ratio" | "deg" | "percent"; raw: string }[]; side: { name: string; value: number; unit: "ratio" | "deg" | "percent"; raw: string }[] } | undefined;
+      let points: { front: { x: number; y: number }[]; side: { x: number; y: number }[] } | undefined;
       try {
         const { measureFaces } = await import("@/lib/faceiq/landmarks");
         const m = await measureFaces(frontImage, sideImage);
-        if (m.frontDetected || m.sideDetected) measurements = { front: m.front, side: m.side };
-      } catch {}
-      setStatusText("Scoring with AI (grounded in measurements)…");
+        if (m.frontDetected || m.sideDetected) {
+          measurements = { front: m.front, side: m.side };
+          points = { front: m.frontPoints, side: m.sidePoints };
+          setStatusText(`Landmarks found (${m.front.length + m.side.length} measures) — scoring with AI…`);
+        } else {
+          setStatusText("No face mesh found — scoring visually…");
+        }
+      } catch {
+        setStatusText("Scoring with AI (grounded in measurements)…");
+      }
       const data = await runAnalysis({ data: { frontImage, sideImage, measurements } });
       setResult(data);
-      // auto-save for user request: automatically save photos
-      onSave(frontImage, sideImage, data);
+      // auto-save with real geometry + points for overlays
+      const extra: { measurements?: { front: { name: string; raw: string; value: number }[]; side: { name: string; raw: string; value: number }[] }; points?: { front: { x: number; y: number }[]; side: { x: number; y: number }[] } } | undefined =
+        measurements || points ? { ...(measurements ? { measurements: { front: measurements.front.map((x) => ({ name: x.name, raw: x.raw, value: x.value })), side: measurements.side.map((x) => ({ name: x.name, raw: x.raw, value: x.value })) } } : {}), ...(points ? { points } : {}) } : undefined;
+      onSave(frontImage, sideImage, data, extra);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed"); } finally { setIsAnalyzing(false); setStatusText(null); }
   };
   const reset = () => { setFrontImage(null); setSideImage(null); setResult(null); setError(null); };

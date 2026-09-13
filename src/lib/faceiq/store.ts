@@ -76,7 +76,15 @@ export function useFaceIQStore() {
     localStorage.setItem(KEY, JSON.stringify(state));
   }, [state, hydrated]);
 
-  const addAnalysis = (front: string, side: string, result: AnalysisResult) => {
+  const addAnalysis = (
+    front: string,
+    side: string,
+    result: AnalysisResult,
+    extra?: {
+      measurements?: { front: { name: string; raw: string; value: number }[]; side: { name: string; raw: string; value: number }[] };
+      points?: { front: { x: number; y: number }[]; side: { x: number; y: number }[] };
+    },
+  ) => {
     const id = `cm${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     const analysis: Analysis = {
       id,
@@ -84,9 +92,11 @@ export function useFaceIQStore() {
       label: "Today",
       front_photo: front,
       side_photo: side,
-      pillars: pillarsFromResult(result),
+      pillars: pillarsFromResult(result, extra?.measurements),
       overall_score: result.overallScore,
       legacy_result: result,
+      measurements: extra?.measurements,
+      landmarkPoints: extra?.points,
     };
     setState((s) => ({ ...s, analyses: [...s.analyses, analysis], selectedId: id }));
     return id;

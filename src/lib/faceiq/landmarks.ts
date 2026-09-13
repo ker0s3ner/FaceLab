@@ -231,6 +231,8 @@ export type FaceMeasurements = {
   side: Measurement[];
   frontDetected: boolean;
   sideDetected: boolean;
+  frontPoints: Point[];
+  sidePoints: Point[];
 };
 
 /** Runs landmark detection on both photos and returns anthropometric measurements. */
@@ -242,10 +244,14 @@ export async function measureFaces(
     measure(frontImage, "front"),
     measure(sideImage, "side"),
   ]);
+  // downsample points to keep localStorage small (every 3rd of 478 ≈ 160 pts)
+  const slim = (pts?: Point[]) => (pts ?? []).filter((_, i) => i % 3 === 0).map((p) => ({ x: Number(p.x.toFixed(4)), y: Number(p.y.toFixed(4)) }));
   return {
     front: front.measurements,
     side: side.measurements,
     frontDetected: front.detected,
     sideDetected: side.detected,
+    frontPoints: slim(front.points),
+    sidePoints: slim(side.points),
   };
 }
