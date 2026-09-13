@@ -14,14 +14,21 @@ function load(): FaceIQState {
       const parsed = JSON.parse(raw) as FaceIQState;
       // Migrate old shallow pillars (1-2 ratios) to deep AI-driven ratios so Key Strengths/Areas not empty
       let migrated = false;
-      const analyses = parsed.analyses.map((a) => {
-        const needs = a.pillars.some((p) => p.ratios.length < 4);
-        if (needs && a.legacy_result) {
+      const analyses = (Array.isArray(parsed.analyses) ? parsed.analyses : [])
+        .map((a) => {
+          const valid =
+            Array.isArray(a?.pillars) &&
+            a.pillars.length > 0 &&
+            a.pillars.every((p) => p && Array.isArray(p.ratios) && p.ratios.length >= 4);
+          if (valid) return a;
+          if (a?.legacy_result) {
+            migrated = true;
+            return { ...a, pillars: pillarsFromResult(a.legacy_result) };
+          }
           migrated = true;
-          return { ...a, pillars: pillarsFromResult(a.legacy_result) };
-        }
-        return a;
-      });
+          return null;
+        })
+        .filter((a): a is Analysis => a !== null);
       if (migrated) {
         const next = { ...parsed, analyses };
         // persist migrated
