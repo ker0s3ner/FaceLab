@@ -43,7 +43,9 @@ function Dashboard() {
   const [compareMode, setCompareMode] = useState(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
 
-  const selected = state.analyses.find((a) => a.id === state.selectedId) ?? state.analyses[state.analyses.length - 1] ?? null;
+  const candidate = state.analyses.find((a) => a.id === state.selectedId) ?? state.analyses[state.analyses.length - 1] ?? null;
+  // Old/partial saved analyses can lack pillars entirely, which crashed the page.
+  const selected = candidate && Array.isArray(candidate.pillars) && candidate.pillars.length > 0 ? candidate : null;
   const userName = user?.email?.split("@")[0] ?? "User";
   const userEmail = user?.email ?? "";
 
