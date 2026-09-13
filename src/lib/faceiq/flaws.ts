@@ -327,7 +327,8 @@ export function flawStatesFor(
   earliest: Analysis | null,
   pillarFilter?: PillarName,
 ): FlawState[] {
-  const all = analysis.pillars.flatMap((p) => p.ratios);
+  if (!analysis || !Array.isArray(analysis.pillars)) return [];
+  const all = analysis.pillars.flatMap((p) => (Array.isArray(p?.ratios) ? p.ratios : []));
   const byName = new Map(all.map((r) => [r.name, r]));
   const out: FlawState[] = [];
 

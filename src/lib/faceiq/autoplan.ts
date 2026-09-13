@@ -29,8 +29,9 @@ const FLAW_TREATMENTS: [RegExp, string[]][] = [
 
 /** Generate up to `max` treatment names for the worst flagged ratios. */
 export function treatmentsForAnalysis(a: Analysis, existing: string[], max = 6): string[] {
+  if (!a || !Array.isArray(a.pillars)) return [];
   const flagged = a.pillars
-    .flatMap((p) => p.ratios)
+    .flatMap((p) => (Array.isArray(p?.ratios) ? p.ratios : []))
     .filter((r) => r.severity_tag === "SEVERE" || r.severity_tag === "EXTREME")
     .sort((x, y) => x.delta_from_ideal - y.delta_from_ideal);
   const picked: string[] = [];
@@ -81,6 +82,9 @@ const SKIN_TIPS: Record<SkinType, Habit[]> = {
 
 /** Daily habits generated from the live analysis + skin type. */
 export function habitsFor(a: Analysis, skin: SkinType): Habit[] {
+  const safeSkin: SkinType =
+    skin === "oily" || skin === "dry" || skin === "combination" || skin === "sensitive" ? skin : "combination";
+  if (!a || !Array.isArray(a.pillars)) return [...SKIN_TIPS[safeSkin]];
   const out: Habit[] = [
     { title: "Drink 2–3L water daily", detail: "Hydration reduces puffiness and under-eye hollowness appearance.", tag: "Habit" },
     { title: "Sleep 7–9 hours", detail: "Poor sleep shows first in dark circles, eye bags and skin tone.", tag: "Habit" },
@@ -110,6 +114,6 @@ export function habitsFor(a: Analysis, skin: SkinType): Habit[] {
   if (has(/nasolabial|forehead lines|wrinkle|crow/i)) {
     out.push({ title: "Peptide moisturizer", detail: "Signal peptides support barrier repair — manage expectations, stay consistent 8–12 weeks.", tag: "Skincare" });
   }
-  out.push(...SKIN_TIPS[skin]);
+  out.push(...SKIN_TIPS[safeSkin]);
   return out;
 }

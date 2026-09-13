@@ -284,6 +284,12 @@ export function regionBoxFor(name: string, view: "front" | "side"): RegionBox | 
 
 // Derive pillars from AnalysisResult — uses AI pillars if present, else synthesizes deep ratios so Key Strengths / Areas never empty
 export function pillarsFromResult(result: AnalysisResult, real?: RealMeasurements): Pillar[] {
+  // Defensive: malformed results (bad cache/older shapes) must never crash the page
+  if (!result || !Array.isArray(result.breakdown)) {
+    const fallback = { overallScore: 5, frontScore: 5, sideScore: 5, breakdown: [], summary: "" };
+    result = { ...fallback, ...(result ?? {}) } as AnalysisResult;
+    if (!Array.isArray(result.breakdown)) result = { ...result, breakdown: [] };
+  }
   const pct = (score: number) => {
     if (score >= 8.5) return "Top 2%";
     if (score >= 7.5) return "Top 15%";

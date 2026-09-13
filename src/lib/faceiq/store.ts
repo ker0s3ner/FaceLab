@@ -28,21 +28,37 @@ function load(): FaceIQState {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as FaceIQState;
-      // Migrate old shallow pillars (1-2 ratios) to deep AI-driven ratios so Key Strengths/Areas not empty
+      // Migrate old shallow pillars (1-2 ratios) to deep AI-driven ratios so Key Strengths/Areas not empty.
+      // Each entry is guarded individually — one corrupt scan must never kill the rest.
       let migrated = false;
       const analyses = (Array.isArray(parsed.analyses) ? parsed.analyses : [])
         .map((a) => {
-          const valid =
-            Array.isArray(a?.pillars) &&
-            a.pillars.length > 0 &&
-            a.pillars.every((p) => p && Array.isArray(p.ratios) && p.ratios.length >= 4);
-          if (valid) return a;
-          if (a?.legacy_result) {
+          try {
+            if (!a || typeof a.id !== "string") {
+              migrated = true;
+              return null;
+            }
+            const valid =
+              Array.isArray(a?.pillars) &&
+              a.pillars.length > 0 &&
+              a.pillars.every((p) => p && Array.isArray(p.ratios) && p.ratios.length >= 4);
+            if (valid) {
+              return {
+                ...a,
+                created_at: typeof a.created_at === "string" ? a.created_at : new Date(0).toISOString(),
+                overall_score: Number.isFinite(a.overall_score) ? a.overall_score : 5,
+              } as Analysis;
+            }
+            if (a?.legacy_result) {
+              migrated = true;
+              return { ...a, pillars: pillarsFromResult(a.legacy_result) };
+            }
             migrated = true;
-            return { ...a, pillars: pillarsFromResult(a.legacy_result) };
+            return null;
+          } catch {
+            migrated = true;
+            return null;
           }
-          migrated = true;
-          return null;
         })
         .filter((a): a is Analysis => a !== null);
       const withSkin: FaceIQState = { ...parsed, analyses, skinType: parsed.skinType ?? "combination" };
@@ -125,19 +141,27 @@ export function useFaceIQStore() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const loaded = load();
-      if (cancelled) return;
-      setState(loaded);
-      stateRef.current = loaded;
-      setHydrated(true);
-      // Cross-device: merge cloud snapshot once (signed-in + migration run).
-      if (cloudTried.current) return;
-      cloudTried.current = true;
-      await runSyncRef.current?.();
-      if (cancelled) return;
-      // flush any queued uploads against the merged state
-      await retryPending((id) => stateRef.current.analyses.find((a) => a.id === id));
-      if (!cancelled) setPending(pendingCount());
+      try {
+        const loaded = load();
+        if (cancelled) return;
+        setState(loaded);
+        stateRef.current = loaded;
+        setHydrated(true);
+        // Cross-device: merge cloud snapshot once (signed-in + migration run).
+        if (cloudTried.current) return;
+        cloudTried.current = true;
+        await runSyncRef.current?.();
+        if (cancelled) return;
+        // flush any queued uploads against the merged state
+        await retryPending((id) => stateRef.current.analyses.find((a) => a.id === id));
+        if (!cancelled) setPending(pendingCount());
+      } catch (e) {
+        console.error("[store] hydration failed", e);
+        if (!cancelled) {
+          setHydrated(true);
+          setCloudStatus("local");
+        }
+      }
     })();
     return () => {
       cancelled = true;

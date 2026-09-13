@@ -19,6 +19,7 @@ import { TREATMENTS } from "@/lib/faceiq/treatments";
 import { RatioOverlay } from "@/components/ratio-overlay";
 import { RatioRow } from "@/components/ratio-row";
 import { SafeImg } from "@/components/safe-img";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { FlawAccordion } from "@/components/flaw-accordion";
 import { RatioModal, type RatioModalContext } from "@/components/ratio-modal";
 
@@ -102,6 +103,7 @@ function Dashboard() {
   };
 
   return (
+    <ErrorBoundary name="dashboard">
     <DashboardShell
       analyses={state.analyses}
       selectedId={state.selectedId}
@@ -207,6 +209,7 @@ function Dashboard() {
         <button onClick={() => { if (confirm("Clear all?")) clearAll(); }} className="mt-8 text-xs text-zinc-400">Clear all analyses</button>
       )}
     </DashboardShell>
+    </ErrorBoundary>
   );
 }
 
