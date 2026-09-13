@@ -144,15 +144,23 @@ export function pillarsFromResult(result: AnalysisResult): Pillar[] {
     }));
   }
 
-  // Fallback: synthesize 5-6 granular ratios per pillar from AI scores so UI never empty/static
+  // Fallback: synthesize granular ratios per pillar — Harmony gets many to match faceiqlabs (~14)
   const templates: Record<PillarName, { name: string; raw: string; view: "front" | "side" }[]> = {
     Harmony: [
       { name: "Total Facial Width to Height Ratio", raw: "1.43x", view: "front" },
       { name: "Eye Separation Ratio", raw: "49.2%", view: "front" },
       { name: "Facial Thirds Balance", raw: "1.02x", view: "front" },
+      { name: "Lower Third Proportion", raw: "34.5%", view: "front" },
+      { name: "Midface Ratio", raw: "1.08x", view: "front" },
+      { name: "Upper Third Proportion", raw: "32.1%", view: "front" },
+      { name: "Intercanthal Distance", raw: "33.4mm", view: "front" },
       { name: "Mandibular recession", raw: "-0.85", view: "side" },
       { name: "Facial Convexity / Glabella", raw: "168°", view: "side" },
-      { name: "Lower Third Proportion", raw: "34.5%", view: "front" },
+      { name: "Nasofrontal Angle", raw: "138°", view: "side" },
+      { name: "Menton Y-Line Deviation", raw: "2.1mm", view: "side" },
+      { name: "Z Angle", raw: "71°", view: "side" },
+      { name: "Holdaway H Line", raw: "-1.2mm", view: "side" },
+      { name: "Chin Throat Angle", raw: "102°", view: "side" },
     ],
     Angularity: [
       { name: "Jaw Frontal Angle", raw: "6.68°", view: "front" },
@@ -196,10 +204,10 @@ export function pillarsFromResult(result: AnalysisResult): Pillar[] {
     const group = groups[name];
     const base = group.length ? group.reduce((s, x) => s + x.score, 0) / group.length : result.overallScore + (Math.random() - 0.5) * 0.6;
     const tpl = templates[name];
-    // create 5-6 ratios with variance around base so we get mix of IDEAL/GOOD/MODERATE/SEVERE
+    // create ratios with variance around base so we get mix of IDEAL/GOOD/MODERATE/SEVERE
     const ratios: Ratio[] = tpl.map((t, i) => {
-      // spread scores: first 1-2 high (IDEAL), middle moderate, last low (SEVERE)
-      const variance = [1.2, 0.6, 0.0, -0.8, -1.6, -0.3][i] ?? 0;
+      const variances = [1.2, 0.6, 0.0, -0.8, -1.6, -0.3, 1.0, -1.2, 0.4, -0.6, 0.8, -1.0, 0.2, -0.4];
+      const variance = variances[i] ?? (Math.random() - 0.5);
       const v = Math.max(1, Math.min(10, base + variance + (Math.random() - 0.5) * 0.4));
       const sev: SeverityTag = v >= 8.2 ? "IDEAL" : v >= 6.8 ? "GOOD" : v >= 5.2 ? "MODERATE" : v >= 3.6 ? "SEVERE" : "EXTREME";
       const desc = group[i]?.description ?? (sev === "IDEAL" ? "Strong point — well within ideal range" : sev === "SEVERE" ? "Notable deviation — impacts overall harmony" : "Near ideal — minor variance");

@@ -453,60 +453,83 @@ function AnalysisTab({ selected }: { selected: any }) {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [showExplainer, setShowExplainer] = useState(false);
   const p = selected.pillars.find((x: any) => x.name === pillar) ?? selected.pillars[0];
-  const frontP = selected.pillars.find((x: any) => x.name === pillar) ?? selected.pillars[0];
   const ideal = p.ratios.filter((r: any) => r.severity_tag === "IDEAL");
   const bad = p.ratios.filter((r: any) => r.severity_tag === "SEVERE" || r.severity_tag === "EXTREME");
-  const visibleRatios = showAllRatios ? p.ratios : p.ratios.slice(0, 6);
   const completed = selected.pillars.filter((x: any) => x.ratios.length > 0).length;
   const descriptor = p.front_score >= 8 ? "Excellent Harmony" : p.front_score >= 6 ? "Good Harmony" : "Developing";
-  // enrich with mock ratios for Harmony Front per spec §1.3 when pillar is Harmony
+
+  // Filter ratios by selected view so side profile actually shows side data
+  const allRatios = p.ratios;
+  const viewRatios = allRatios.filter((r: any) => r.view === view);
+  const fallbackRatios = viewRatios.length ? viewRatios : allRatios;
+  const visibleRatios = showAllRatios ? fallbackRatios : fallbackRatios.slice(0, 10);
+  // enriched handles both views now — merged already via fallback, but keep spec extras for both
   const enriched: any[] = (() => {
-    if (pillar !== "Harmony" || view !== "front") return visibleRatios;
-    // ensure at least spec names appear
-    const extras = [
-      { name: "Total Facial Width to Height Ratio", raw_measurement: "1.43x", severity_tag: "GOOD", value: 5.66, delta_from_ideal: 0 },
-      { name: "Eye Separation Ratio", raw_measurement: "49.17%", severity_tag: "GOOD", value: 4.2, delta_from_ideal: 0 },
-      { name: "Mandibular recession", raw_measurement: "-0.85", severity_tag: "SEVERE", value: 3.1, delta_from_ideal: -0.85 },
-      { name: "Facial Convexity / Glabella", raw_measurement: "166.8°", severity_tag: "MODERATE", value: 4.5, delta_from_ideal: -0.5 },
-    ];
+    if (pillar !== "Harmony") return visibleRatios;
+    const extrasByView: Record<string, any[]> = {
+      front: [
+        { name: "Total Facial Width to Height Ratio", raw_measurement: "1.43x", severity_tag: "GOOD", value: 5.66, delta_from_ideal: 0, view: "front", description: "Width to height proportional balance" },
+        { name: "Eye Separation Ratio", raw_measurement: "49.17%", severity_tag: "GOOD", value: 4.2, delta_from_ideal: 0, view: "front", description: "Inter-pupillary distance" },
+        { name: "Lower Third Proportion", raw_measurement: "34.5%", severity_tag: "GOOD", value: 6.2, delta_from_ideal: 0.1, view: "front", description: "Lower third height" },
+        { name: "Intercanthal Distance", raw_measurement: "33.4mm", severity_tag: "MODERATE", value: 5.1, delta_from_ideal: -0.3, view: "front", description: "Inner eye corner distance" },
+      ],
+      side: [
+        { name: "Mandibular recession", raw_measurement: "-0.85", severity_tag: "SEVERE", value: 3.1, delta_from_ideal: -0.85, view: "side", description: "Chin retrusion" },
+        { name: "Facial Convexity / Glabella", raw_measurement: "166.8°", severity_tag: "MODERATE", value: 4.5, delta_from_ideal: -0.5, view: "side", description: "Forehead to chin convexity" },
+        { name: "Z Angle", raw_measurement: "71°", severity_tag: "SEVERE", value: 3.8, delta_from_ideal: -0.9, view: "side", description: "Lip-chin profile angle" },
+        { name: "Nasofrontal Angle", raw_measurement: "138°", severity_tag: "GOOD", value: 6.8, delta_from_ideal: 0.2, view: "side", description: "Nose-forehead angle" },
+        { name: "Holdaway H Line", raw_measurement: "-1.2mm", severity_tag: "MODERATE", value: 5.3, delta_from_ideal: -0.4, view: "side", description: "Lip to H-line distance" },
+      ],
+    };
+    const extras = extrasByView[view] ?? [];
     const names = new Set(visibleRatios.map((r: any) => r.name));
     const merged = [...visibleRatios];
     for (const e of extras) if (!names.has(e.name)) merged.unshift(e as any);
     return merged;
   })();
 
+  // Landmark positions mapped to anatomy — not random
+  const landmarkPos: Record<string, { x: number; y: number }> = {
+    "Total Facial Width to Height Ratio": { x: 50, y: 50 },
+    "Eye Separation Ratio": { x: 50, y: 38 },
+    "Intercanthal Distance": { x: 50, y: 40 },
+    "Lower Third Proportion": { x: 50, y: 72 },
+    "Facial Convexity / Glabella": { x: 48, y: 30 },
+    "Mandibular recession": { x: 52, y: 78 },
+    "Z Angle": { x: 38, y: 62 },
+    "Nasofrontal Angle": { x: 52, y: 42 },
+    "Holdaway H Line": { x: 42, y: 66 },
+    "Jaw Frontal Angle": { x: 30, y: 70 },
+    "Gonial Angle": { x: 28, y: 68 },
+  };
+
   return (
     <div className="space-y-6">
-      {/* Sub-nav per spec §5.1 */}
+      {/* Sub-nav — removed tictac Front/Side toggle, controlled by the two photo+score buttons below */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {(["Harmony", "Angularity", "Dimorphism", "Features"] as const).map((n) => (
-          <div key={n} className="flex items-center gap-1">
-            <button
-              onClick={() => setPillar(n)}
-              className={`rounded-full border px-4 py-1.5 text-sm whitespace-nowrap ${pillar === n ? "bg-zinc-900 text-white border-zinc-900 dark:bg-white dark:text-zinc-900" : "bg-white border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700"}`}
-            >
-              {n}
-            </button>
-            {n === "Harmony" && pillar === "Harmony" && (
-              <div className="ml-1 flex rounded-full border overflow-hidden dark:border-zinc-700">
-                <button onClick={() => setView("front")} className={`px-3 py-1.5 text-xs ${view === "front" ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" : "bg-white dark:bg-zinc-900"}`}>Front</button>
-                <button onClick={() => setView("side")} className={`px-3 py-1.5 text-xs ${view === "side" ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" : "bg-white dark:bg-zinc-900"}`}>Side</button>
-              </div>
-            )}
-          </div>
+          <button
+            key={n}
+            onClick={() => setPillar(n)}
+            className={`rounded-full border px-4 py-1.5 text-sm whitespace-nowrap ${pillar === n ? "bg-zinc-900 text-white border-zinc-900 dark:bg-white dark:text-zinc-900" : "bg-white border-zinc-200 dark:bg-zinc-900 dark:border-zinc-700"}`}
+          >
+            {n}
+          </button>
         ))}
       </div>
 
-      {/* Score summary bar §5.2 */}
+      {/* Score summary bar — clickable to switch Front/Side view */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="flex items-center gap-3 rounded-xl border bg-white p-3 dark:bg-zinc-900 dark:border-zinc-800">
+        <button onClick={() => setView("front")} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${view === "front" ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800 ring-1 ring-zinc-900 dark:ring-white" : "bg-white dark:bg-zinc-900 dark:border-zinc-800 hover:bg-zinc-50"}`}>
           <img src={selected.front_photo} alt="front" className="h-12 w-9 rounded-lg object-cover" />
           <div><p className="text-xs tracking-widest uppercase text-zinc-400">Front</p><p className="font-medium tabular-nums">{selected.pillars.find((x: any) => x.name === pillar)?.front_score.toFixed(1) ?? "-"}</p></div>
-        </div>
-        <div className="flex items-center gap-3 rounded-xl border bg-white p-3 dark:bg-zinc-900 dark:border-zinc-800">
+          {view === "front" && <span className="ml-auto text-zinc-900 dark:text-white">●</span>}
+        </button>
+        <button onClick={() => setView("side")} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${view === "side" ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800 ring-1 ring-zinc-900 dark:ring-white" : "bg-white dark:bg-zinc-900 dark:border-zinc-800 hover:bg-zinc-50"}`}>
           <img src={selected.side_photo} alt="side" className="h-12 w-9 rounded-lg object-cover" />
           <div><p className="text-xs tracking-widest uppercase text-zinc-400">Side</p><p className="font-medium tabular-nums">{selected.pillars.find((x: any) => x.name === pillar)?.side_score.toFixed(1) ?? "-"}</p></div>
-        </div>
+          {view === "side" && <span className="ml-auto text-zinc-900 dark:text-white">●</span>}
+        </button>
       </div>
 
       {/* Main 3-col layout §5.3 */}
@@ -517,18 +540,26 @@ function AnalysisTab({ selected }: { selected: any }) {
             <img src={view === "front" ? selected.front_photo : selected.side_photo} alt={`${pillar} ${view}`} className="aspect-[3/4] w-full object-cover bg-zinc-100" />
             {/* gear top-right */}
             <button className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-zinc-600 shadow dark:bg-zinc-800 dark:text-zinc-300">⚙</button>
-            {/* landmark overlay markers */}
-            {enriched.slice(0, 4).map((r: any, idx: number) => (
-              <button
-                key={r.name}
-                onClick={() => setHighlightId(highlightId === r.name ? null : r.name)}
-                className={`absolute flex h-6 w-6 items-center justify-center rounded-full border-2 bg-white text-[10px] font-bold shadow ${highlightId === r.name ? "border-emerald-500 text-emerald-600" : "border-zinc-300 text-zinc-500"}`}
-                style={{ left: `${22 + idx * 18}%`, top: `${28 + (idx % 2) * 22}%` }}
-                title={r.name}
-              >
-                ?
-              </button>
-            ))}
+            {/* landmark overlay — anatomically mapped, not random */}
+            {enriched.slice(0, 6).map((r: any) => {
+              const pos = landmarkPos[r.name] ?? { x: 50, y: 50 };
+              return (
+                <button
+                  key={r.name}
+                  onClick={() => setHighlightId(highlightId === r.name ? null : r.name)}
+                  className={`absolute flex h-6 w-6 items-center justify-center rounded-full border-2 bg-white text-[10px] font-bold shadow transition-colors ${highlightId === r.name ? "border-emerald-500 text-emerald-600" : "border-zinc-300 text-zinc-500"}`}
+                  style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }}
+                  title={r.name}
+                >
+                  ?
+                </button>
+              );
+            })}
+            {/* measurement line for highlighted */}
+            {highlightId && (() => {
+              const pos = landmarkPos[highlightId] ?? { x: 50, y: 50 };
+              return <div className="absolute h-0.5 w-16 bg-emerald-400/70 pointer-events-none" style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }} />;
+            })()}
             {highlightId && (
               <div className="absolute left-3 top-12 rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white dark:bg-white dark:text-zinc-900 shadow">
                 {highlightId} — measurement line overlay
@@ -584,9 +615,9 @@ function AnalysisTab({ selected }: { selected: any }) {
               </li>
             ))}
           </ul>
-          {p.ratios.length > 6 && (
+          {fallbackRatios.length > 10 && (
             <button onClick={() => setShowAllRatios((v) => !v)} className="mt-3 text-xs font-medium underline">
-              {showAllRatios ? "Show Less" : `Show ${p.ratios.length - 6} More`}
+              {showAllRatios ? "Show Less" : `Show ${fallbackRatios.length - 10} More`}
             </button>
           )}
 
