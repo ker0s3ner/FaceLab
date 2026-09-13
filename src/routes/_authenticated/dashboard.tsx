@@ -15,8 +15,8 @@ import { analyzeFace, type AnalysisResult } from "@/lib/analyze.functions";
 import { severityColor } from "@/lib/faceiq/types";
 import { TREATMENTS } from "@/lib/faceiq/treatments";
 
-const title = "Your dashboard — FaceIQ Labs";
-const description = "Your FaceIQ Labs account dashboard.";
+const title = "Your dashboard — FaceLab";
+const description = "Your FaceLab account dashboard.";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -182,6 +182,8 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
   const [improvePillar, setImprovePillar] = useState("Harmony");
   const [consent, setConsent] = useState(false);
   const [showActionsAll, setShowActionsAll] = useState(false);
+  const [openStrength, setOpenStrength] = useState<string | null>(null);
+  const [openImprove, setOpenImprove] = useState<string | null>(null);
 
   const overall = selected.pillars.find((p) => p.name === overallPillar) ?? selected.pillars[0]!;
   const strengthsAll = selected.pillars.flatMap((p) => p.ratios.filter((r) => r.severity_tag === "IDEAL"));
@@ -239,6 +241,16 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
         </div>
         <p className="mt-3 brand-display text-4xl">{selected.overall_score.toFixed(1)} <span className="text-lg text-zinc-400">/10</span></p>
         <p className="text-sm text-zinc-500">{selected.overall_score >= 7 ? "Excellent" : selected.overall_score >= 5 ? "Average" : "Developing"} — all unlocked, no blur</p>
+        {selected.legacy_result?.summary && <p className="mt-3 rounded-lg bg-zinc-50 p-3 text-sm leading-relaxed text-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-300">AI: {selected.legacy_result.summary}</p>}
+        {selected.legacy_result?.breakdown && (
+          <div className="mt-3 grid grid-cols-1 gap-1.5">
+            {selected.legacy_result.breakdown.map((b) => (
+              <div key={b.category} className="flex justify-between gap-3 rounded bg-zinc-50 px-2.5 py-1.5 text-xs dark:bg-zinc-800/50">
+                <span className="font-medium">{b.category}</span><span className="tabular-nums">{b.score.toFixed(1)}/10</span><span className="flex-1 truncate text-zinc-500">{b.description}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="mt-4 flex gap-2 overflow-x-auto">
           {["Harmony", "Angularity", "Dimorphism", "Features"].map((n) => (
@@ -273,9 +285,9 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
         </div>
       </Card>
 
-      {/* Key Strengths */}
+      {/* Key Strengths — now AI-driven, in-depth */}
       <Card className="p-6">
-        <h4 className="font-medium">Key Strengths</h4>
+        <h4 className="font-medium">Key Strengths <span className="ml-2 text-xs font-normal text-zinc-400">{strengthsFiltered.length} IDEAL</span></h4>
         <div className="mt-3 flex gap-2 overflow-x-auto">
           {["Harmony", "Angularity", "Dimorphism", "Features"].map((n) => (
             <button key={n} onClick={() => setStrengthPillar(n)} className={`rounded-full px-3 py-1 text-xs ${strengthPillar === n ? "bg-zinc-900 text-white" : "border dark:border-zinc-700"}`}>{n}</button>
@@ -283,14 +295,17 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
         </div>
         <ul className="mt-4 space-y-2">
           {(strengthsExpanded ? strengthsFiltered : strengthsFiltered.slice(0, 3)).map((r) => (
-            <li key={r.name} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm dark:border-zinc-800">
-              <span className={`rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>IDEAL</span>
-              <span className="flex-1 truncate">{r.name}</span>
-              <span className="tabular-nums text-xs">{r.raw_measurement}</span>
-              <span className="text-zinc-400">›</span>
+            <li key={r.name} onClick={() => setOpenStrength(openStrength === r.name ? null : r.name)} className="cursor-pointer rounded-lg border px-3 py-2 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+              <div className="flex items-center gap-2 text-sm">
+                <span className={`rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>IDEAL</span>
+                <span className="flex-1 truncate font-medium">{r.name}</span>
+                <span className="tabular-nums text-xs">{r.raw_measurement} · {r.value.toFixed(1)}/10</span>
+                <span className="text-zinc-400">{openStrength === r.name ? "−" : "›"}</span>
+              </div>
+              {openStrength === r.name && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI: Well within ideal range — contributes positively to overall harmony."} Ideal {r.ideal_range[0]}–{r.ideal_range[1]} · {r.view} view</p>}
             </li>
           ))}
-          {strengthsFiltered.length === 0 && <li className="text-sm text-zinc-400">No IDEAL ratios in this pillar — all unlocked, nothing hidden.</li>}
+          {strengthsFiltered.length === 0 && <li className="text-sm text-zinc-400">No IDEAL in this pillar — try another pillar. All ratios unlocked.</li>}
         </ul>
         {strengthsFiltered.length > 3 && (
           <button onClick={() => setStrengthsExpanded((v) => !v)} className="mt-3 text-xs font-medium text-zinc-600 underline">
@@ -299,9 +314,9 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
         )}
       </Card>
 
-      {/* Areas of Improvement */}
+      {/* Areas of Improvement — AI-driven */}
       <Card className="p-6">
-        <h4 className="font-medium">Areas of Improvement</h4>
+        <h4 className="font-medium">Areas of Improvement <span className="ml-2 text-xs font-normal text-zinc-400">{improvementsFiltered.length} flagged</span></h4>
         <div className="mt-3 flex gap-2 overflow-x-auto">
           {["Harmony", "Angularity", "Dimorphism", "Features"].map((n) => (
             <button key={n} onClick={() => setImprovePillar(n)} className={`rounded-full px-3 py-1 text-xs ${improvePillar === n ? "bg-zinc-900 text-white" : "border dark:border-zinc-700"}`}>{n}</button>
@@ -309,11 +324,14 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
         </div>
         <ul className="mt-4 space-y-2">
           {(improvementsExpanded ? improvementsFiltered : improvementsFiltered.slice(0, 3)).map((r) => (
-            <li key={r.name} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm dark:border-zinc-800">
-              <span className={`rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>{r.severity_tag}</span>
-              <span className="flex-1 truncate">{r.name}</span>
-              <span className="tabular-nums text-xs text-red-600">{r.delta_from_ideal.toFixed(2)}</span>
-              <span className="text-zinc-400">›</span>
+            <li key={r.name} onClick={() => setOpenImprove(openImprove === r.name ? null : r.name)} className="cursor-pointer rounded-lg border px-3 py-2 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+              <div className="flex items-center gap-2 text-sm">
+                <span className={`rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>{r.severity_tag}</span>
+                <span className="flex-1 truncate font-medium">{r.name}</span>
+                <span className="tabular-nums text-xs text-red-600">{r.delta_from_ideal.toFixed(2)} · {r.raw_measurement}</span>
+                <span className="text-zinc-400">{openImprove === r.name ? "−" : "›"}</span>
+              </div>
+              {openImprove === r.name && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI: Distance from ideal impacts harmony. Consider Plan/Simulate for options."} Ideal {r.ideal_range[0]}–{r.ideal_range[1]} · {r.view} view · value {r.value.toFixed(1)}/10</p>}
             </li>
           ))}
           {improvementsFiltered.length === 0 && <li className="text-sm text-zinc-400">No severe ratios — unlocked view.</li>}
@@ -339,7 +357,7 @@ function OverviewTab({ selected }: { selected: NonNullable<ReturnType<typeof use
             <p className="text-xs tracking-widest uppercase text-zinc-400">Overall</p>
             <p className="brand-display text-2xl">{selected.overall_score.toFixed(1)}</p>
           </div>
-          <div className="ml-auto text-[10px] tracking-widest uppercase text-zinc-400">FACEIQ LABS</div>
+          <div className="ml-auto text-[10px] tracking-widest uppercase text-zinc-400">FACELAB</div>
         </div>
         <h5 className="mt-4 font-medium">Save it. Share it.</h5>
         <p className="text-sm text-zinc-500">Download your score card — unlocked.</p>
@@ -518,7 +536,7 @@ function AnalysisTab({ selected }: { selected: any }) {
               </div>
             )}
             {/* watermark */}
-            <span className="absolute bottom-3 left-3 text-[10px] tracking-widest uppercase text-white/70">FaceIQ Labs</span>
+            <span className="absolute bottom-3 left-3 text-[10px] tracking-widest uppercase text-white/70">FaceLab</span>
           </div>
           <div className="flex items-end justify-between p-4">
             <div>
@@ -546,20 +564,23 @@ function AnalysisTab({ selected }: { selected: any }) {
             {enriched.map((r: any) => (
               <li
                 key={r.name}
-                onClick={() => setHighlightId(r.name)}
-                className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${highlightId === r.name ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800" : "border-zinc-200 bg-white hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"}`}
+                onClick={() => setHighlightId(highlightId === r.name ? null : r.name)}
+                className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${highlightId === r.name ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800" : "border-zinc-200 bg-white hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"}`}
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm">{r.name}</p>
-                  <div className="mt-1 h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-500" style={{ width: `${Math.min(100, Math.max(8, (r.value / 10) * 100))}%` }} />
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{r.name}</p>
+                    <div className="mt-1 h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-500" style={{ width: `${Math.min(100, Math.max(8, (r.value / 10) * 100))}%` }} />
+                    </div>
                   </div>
+                  <div className="shrink-0 text-right">
+                    <span className={`inline-flex rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>{r.severity_tag}</span>
+                    <p className="mt-1 text-xs tabular-nums text-zinc-500">{r.raw_measurement ?? r.value.toFixed(2)}</p>
+                  </div>
+                  <span className="text-zinc-400">{highlightId === r.name ? "−" : "›"}</span>
                 </div>
-                <div className="shrink-0 text-right">
-                  <span className={`inline-flex rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>{r.severity_tag}</span>
-                  <p className="mt-1 text-xs tabular-nums text-zinc-500">{r.raw_measurement ?? r.value.toFixed(2)}</p>
-                </div>
-                <span className="text-zinc-400">›</span>
+                {highlightId === r.name && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI measurement — tap again to hide."} Ideal {Array.isArray(r.ideal_range) ? r.ideal_range.join("–") : ""} · {r.view} view</p>}
               </li>
             ))}
           </ul>

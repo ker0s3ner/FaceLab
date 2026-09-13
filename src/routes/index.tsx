@@ -178,7 +178,7 @@ function Index() {
           {[
             {
               label: "100+ metrics",
-              value: "FaceIQ Score",
+              value: "FaceLab Score",
             },
             {
               label: "Side profile",

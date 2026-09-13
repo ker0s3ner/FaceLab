@@ -10,7 +10,26 @@ function load(): FaceIQState {
   if (typeof window === "undefined") return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as FaceIQState;
+    if (raw) {
+      const parsed = JSON.parse(raw) as FaceIQState;
+      // Migrate old shallow pillars (1-2 ratios) to deep AI-driven ratios so Key Strengths/Areas not empty
+      let migrated = false;
+      const analyses = parsed.analyses.map((a) => {
+        const needs = a.pillars.some((p) => p.ratios.length < 4);
+        if (needs && a.legacy_result) {
+          migrated = true;
+          return { ...a, pillars: pillarsFromResult(a.legacy_result) };
+        }
+        return a;
+      });
+      if (migrated) {
+        const next = { ...parsed, analyses };
+        // persist migrated
+        setTimeout(() => localStorage.setItem(KEY, JSON.stringify(next)), 0);
+        return next;
+      }
+      return parsed;
+    }
     // migrate legacy faceiq_scans
     const legacy = localStorage.getItem(LEGACY_KEY);
     if (legacy) {

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 export const Route = createFileRoute("/terms")({
-  head: () => ({ meta: [{ title: "Terms — FaceIQ Labs" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: "Terms — FaceLab" }, { name: "robots", content: "noindex" }] }),
   component: () => (
     <main className="min-h-screen bg-white dark:bg-zinc-950 px-6 py-16">
       <div className="max-w-2xl mx-auto">

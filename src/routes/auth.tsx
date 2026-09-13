@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { lovable } from "@/integrations/lovable/index";
 import { supabase } from "@/integrations/supabase/client";
 
-const title = "Sign in — FaceIQ Labs";
-const description = "Sign in to FaceIQ Labs to access your account dashboard.";
+const title = "Sign in — FaceLab";
+const description = "Sign in to FaceLab to access your account dashboard.";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -66,7 +66,7 @@ function AuthPage() {
           Sign in
         </h1>
         <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
-          Continue with Google to access your FaceIQ Labs account.
+          Continue with Google to access your FaceLab account.
         </p>
 
         <button
