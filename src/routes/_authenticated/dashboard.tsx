@@ -12,7 +12,7 @@ import { RatingDisplay } from "@/components/rating-display";
 import { Sparkles, Loader2, Shield, Trash2, Brain, Save } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { analyzeFace, type AnalysisResult } from "@/lib/analyze.functions";
-import { severityColor } from "@/lib/faceiq/types";
+import { regionBoxFor, severityColor } from "@/lib/faceiq/types";
 import { TREATMENTS } from "@/lib/faceiq/treatments";
 
 const title = "Your dashboard — FaceLab";
@@ -151,7 +151,7 @@ function percentileFor(score: number) {
   return "Bottom 14%";
 }
 
-function BellCurve({ score, history = [], label = "You" }: { score: number; history?: number[]; label?: string }) {
+function BellCurve({ score, history = [], label = "You", potential, target }: { score: number; history?: number[]; label?: string; potential?: number; target?: number }) {
   const mean = 5.0;
   const sigma = 1.6;
   const xForScore = (s: number) => 10 + (Math.max(0, Math.min(10, s)) / 10) * 180;
@@ -187,18 +187,55 @@ function BellCurve({ score, history = [], label = "You" }: { score: number; hist
         </defs>
         <path d={`${d} L 190 50 L 10 50 Z`} fill={`url(#${gradId})`} stroke="none" />
         <path d={d} fill="none" stroke="#a1a1aa" strokeWidth="1.2" />
+        {/* improvement range: current → potential */}
+        {potential !== undefined && potential > shown && (
+          <g>
+            <rect
+              x={xForScore(shown)}
+              y={8}
+              width={Math.max(2, xForScore(Math.min(10, potential)) - xForScore(shown))}
+              height={42}
+              fill="#10b981"
+              opacity="0.14"
+              rx="2"
+            />
+            <line
+              x1={xForScore(Math.min(10, potential))}
+              y1={50 - (gauss(Math.min(10, potential)) / maxG) * 36}
+              x2={xForScore(Math.min(10, potential))}
+              y2="50"
+              stroke="#10b981"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx={xForScore(Math.min(10, potential))}
+              cy={50 - (gauss(Math.min(10, potential)) / maxG) * 36}
+              r="3.5"
+              fill="#10b981"
+              stroke="white"
+              strokeWidth="1.2"
+            />
+            <text x={xForScore(Math.min(10, potential))} y="8" fontSize="5" textAnchor="middle" fill="#059669" fontWeight="bold">
+              {potential.toFixed(1)}
+            </text>
+          </g>
+        )}
         {/* history dots */}
         {history.map((h, i) => {
           const hx = xForScore(h);
           const hy = 50 - (gauss(h) / maxG) * 36;
           return <circle key={i} cx={hx} cy={hy} r="2" fill="none" stroke="#71717a" strokeWidth="1" opacity="0.7" />;
         })}
-        <line x1={markerX} y1={markerY} x2={markerX} y2="50" stroke="#18181b" strokeWidth="1.2" strokeDasharray="3 3" />
+        <line x1={markerX} y1={markerY} x2={markerX} y2="50" stroke="#18181b" strokeWidth="1.5" />
         <circle cx={markerX} cy={markerY} r="4.5" fill="#18181b" stroke="white" strokeWidth="1.5" />
         <text x={markerX} y="8" fontSize="5.5" textAnchor="middle" fill="#18181b" fontWeight="bold">{shown.toFixed(1)}</text>
       </svg>
       <p className="text-center text-[10px] tracking-widest uppercase text-zinc-400">
-        {hover !== null ? `Inspecting ${hover.toFixed(1)} — ${percentile}` : `Population — ${percentile} — ${label} are here`}
+        {hover !== null
+          ? `Inspecting ${hover.toFixed(1)} — ${percentile}`
+          : potential !== undefined
+            ? `● ${shown.toFixed(1)} now → ${potential.toFixed(1)} potential — ${label}`
+            : `Population — ${percentile} — ${label} are here`}
       </p>
       <div className="mt-1 flex justify-between text-[8px] tabular-nums text-zinc-400"><span>0</span><span>2.5</span><span>5</span><span>7.5</span><span>10</span></div>
       {history.length > 0 && <p className="mt-1 text-center text-[10px] text-zinc-400">○ {history.length} past scan{history.length > 1 ? "s" : ""} plotted — hover to inspect</p>}
@@ -235,6 +272,11 @@ function OverviewTab({ selected, onViewPillar }: { selected: NonNullable<ReturnT
   const target = Math.min(10, current + planDelta);
   const potential = Math.min(10, current + planDelta + 0.6);
   const topActions = state.planActions.slice(0, showActionsAll ? 10 : 3);
+  // Bell curve view: Front/Side cards select which score the curve tracks
+  const [curveView, setCurveView] = useState<"front" | "side">("front");
+  const curveScore = curveView === "front" ? overall.front_score : overall.side_score;
+  const curveTarget = Math.min(10, curveScore + planDelta * 0.5);
+  const curvePotential = Math.min(10, curveScore + planDelta * 0.5 + 0.4);
 
   return (
     <div className="space-y-6">
@@ -305,22 +347,22 @@ function OverviewTab({ selected, onViewPillar }: { selected: NonNullable<ReturnT
         </div>
 
         <div className="mt-6 grid sm:grid-cols-[1fr_1fr_1.2fr] gap-4 items-stretch">
-          <div className="rounded-xl border overflow-hidden dark:border-zinc-800 flex flex-col">
+          <button onClick={() => setCurveView("front")} className={`rounded-xl border overflow-hidden flex flex-col text-left transition-colors ${curveView === "front" ? "border-zinc-900 ring-1 ring-zinc-900 dark:border-white dark:ring-white" : "dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40"}`}>
             <div className="flex-1 aspect-[3/4] overflow-hidden bg-zinc-100"><img src={selected.front_photo} alt="front" className="h-full w-full object-cover" /></div>
-            <div className="p-2 flex justify-between text-xs border-t dark:border-zinc-800"><span>Front</span><span className="font-medium tabular-nums">{overall.front_score.toFixed(1)}</span></div>
-          </div>
-          <div className="rounded-xl border overflow-hidden dark:border-zinc-800 flex flex-col">
+            <div className="p-2 flex justify-between text-xs border-t dark:border-zinc-800"><span>Front{curveView === "front" ? " ●" : ""}</span><span className="font-medium tabular-nums">{overall.front_score.toFixed(1)}</span></div>
+          </button>
+          <button onClick={() => setCurveView("side")} className={`rounded-xl border overflow-hidden flex flex-col text-left transition-colors ${curveView === "side" ? "border-zinc-900 ring-1 ring-zinc-900 dark:border-white dark:ring-white" : "dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40"}`}>
             <div className="flex-1 aspect-[3/4] overflow-hidden bg-zinc-100"><img src={selected.side_photo} alt="side" className="h-full w-full object-cover" /></div>
-            <div className="p-2 flex justify-between text-xs border-t dark:border-zinc-800"><span>Side</span><span className="rounded bg-zinc-900 px-2 py-0.5 text-white dark:bg-white dark:text-zinc-900 tabular-nums">{overall.side_score.toFixed(1)} · {overall.percentile}</span></div>
-          </div>
+            <div className="p-2 flex justify-between text-xs border-t dark:border-zinc-800"><span>Side{curveView === "side" ? " ●" : ""}</span><span className="rounded bg-zinc-900 px-2 py-0.5 text-white dark:bg-white dark:text-zinc-900 tabular-nums">{overall.side_score.toFixed(1)} · {overall.percentile}</span></div>
+          </button>
           <div className="rounded-xl border p-3 dark:border-zinc-800 flex flex-col">
-            <p className="text-xs tracking-widest uppercase text-zinc-400">Where you stand — {overall.name}</p>
-            <BellCurve score={overall.front_score} history={state.analyses.map((a) => a.pillars.find((p) => p.name === overall.name)?.front_score ?? a.overall_score)} label={overall.name} />
+            <p className="text-xs tracking-widest uppercase text-zinc-400">Where you stand — {overall.name} · {curveView}</p>
+            <BellCurve score={curveScore} potential={curvePotential} target={curveTarget} history={state.analyses.map((a) => a.pillars.find((p) => p.name === overall.name)?.front_score ?? a.overall_score)} label={`${overall.name} ${curveView}`} />
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded bg-zinc-50 px-2 py-1 text-center dark:bg-zinc-800/50"><span className="text-zinc-400">Front</span> <span className="font-medium tabular-nums">{overall.front_score.toFixed(1)}</span></div>
               <div className="rounded bg-zinc-50 px-2 py-1 text-center dark:bg-zinc-800/50"><span className="text-zinc-400">Side</span> <span className="font-medium tabular-nums">{overall.side_score.toFixed(1)}</span></div>
             </div>
-            <p className="mt-2 text-[11px] text-zinc-400">Hover the curve to inspect any score · ○ = your past scans · switches with pillar tabs above</p>
+            <p className="mt-2 text-[11px] text-zinc-400">● current {curveScore.toFixed(1)} → shaded range to {curvePotential.toFixed(1)} potential · click Front/Side cards · hover to inspect · ○ past scans</p>
           </div>
         </div>
       </Card>
@@ -508,8 +550,26 @@ function LandmarkPhoto({ src, points, enriched, highlightId, setHighlightId, lan
           ))}
         </svg>
       )}
-      {/* ratio markers anchored to anatomy */}
+      {/* region boxes around face parts (Dimorphism / Features / Angularity) */}
+      {enriched.map((r: any) => {
+        const box = regionBoxFor(r.name, (view === "side" ? "side" : "front") as "front" | "side");
+        if (!box) return null;
+        const active = highlightId === r.name;
+        return (
+          <button
+            key={r.name}
+            onClick={() => setHighlightId(active ? null : r.name)}
+            className={`absolute rounded-md border-2 transition-colors ${active ? "border-emerald-400 bg-emerald-400/10" : "border-white/50 bg-transparent hover:border-white"}`}
+            style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }}
+            title={`${r.name} — ${r.raw_measurement}`}
+          >
+            <span className={`absolute -top-2 left-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold shadow ${active ? "bg-emerald-500 text-white" : "bg-white/90 text-zinc-500"}`}>?</span>
+          </button>
+        );
+      })}
+      {/* ratio markers anchored to anatomy (Harmony numeric ratios without boxes) */}
       {enriched.slice(0, 8).map((r: any) => {
+        if (regionBoxFor(r.name, (view === "side" ? "side" : "front") as "front" | "side")) return null;
         const pos = landmarkPos[r.name] ?? { x: 50, y: 50 };
         return (
           <button
@@ -557,10 +617,11 @@ function AnalysisTab({ selected, initialPillar }: { selected: any; initialPillar
   const completed = selected.pillars.filter((x: any) => x.ratios.length > 0).length;
   const descriptor = p.front_score >= 8 ? "Excellent Harmony" : p.front_score >= 6 ? "Good Harmony" : "Developing";
 
-  // Filter ratios by selected view so side profile actually shows side data
+  // Filter ratios by selected view so side profile actually shows side data.
+  // Region-based pillars (Dimorphism/Features/Angularity) show all items — boxes adapt per view.
   const allRatios = p.ratios;
   const viewRatios = allRatios.filter((r: any) => r.view === view);
-  const fallbackRatios = viewRatios.length ? viewRatios : allRatios;
+  const fallbackRatios = pillar === "Harmony" ? (viewRatios.length ? viewRatios : allRatios) : allRatios;
   const visibleRatios = showAllRatios ? fallbackRatios : fallbackRatios.slice(0, 10);
   // enriched handles both views now — merged already via fallback, but keep spec extras for both
   const enriched: any[] = (() => {
