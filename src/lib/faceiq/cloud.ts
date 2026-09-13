@@ -105,11 +105,16 @@ function emptySnapshot(): CloudSnapshot {
   return { analyses: [], planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
 }
 
-/** Merge cloud + local by client id (union, cloud row wins on conflict). */
+/** Merge cloud + local by client id. On conflict prefer the copy that still has photos. */
 export function mergeSnapshots(local: FaceIQState, cloud: CloudSnapshot): FaceIQState {
+  const hasPhotos = (a: Analysis) => !!(a.front_photo || a.side_photo);
   const byId = new Map<string, Analysis>();
   for (const a of local.analyses) byId.set(a.id, a);
-  for (const a of cloud.analyses) byId.set(a.id, a);
+  for (const a of cloud.analyses) {
+    const prev = byId.get(a.id);
+    if (prev && hasPhotos(prev) && !hasPhotos(a)) continue;
+    byId.set(a.id, a);
+  }
   const analyses = [...byId.values()].sort((x, y) => x.created_at.localeCompare(y.created_at));
   const selectedId =
     (local.selectedId && byId.has(local.selectedId) ? local.selectedId : null) ??

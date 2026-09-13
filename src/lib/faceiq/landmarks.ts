@@ -59,6 +59,29 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
+/**
+ * Downscale a photo data URL so it stays small enough for localStorage +
+ * fast AI upload. Keeps aspect ratio, max dimension 1024px, JPEG ~0.82.
+ * Returns the original if it is already small or downscaling fails.
+ */
+export async function downscalePhoto(dataUrl: string, maxDim = 1024, quality = 0.82): Promise<string> {
+  try {
+    if (dataUrl.length < 350_000) return dataUrl;
+    const img = await loadImage(dataUrl);
+    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+    if (scale >= 1) return dataUrl;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch {
+    return dataUrl;
+  }
+}
+
 // --- landmark indices (MediaPipe canonical face mesh) ---
 const I = {
   chin: 152,

@@ -1398,6 +1398,16 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
   const analyzePhotos = async () => {
     if (!frontImage || !sideImage) return;
     setIsAnalyzing(true); setError(null); setResult(null);
+    // Downscale first so photos fit localStorage + upload fast (never blank them)
+    let front = frontImage;
+    let side = sideImage;
+    try {
+      const { downscalePhoto } = await import("@/lib/faceiq/landmarks");
+      setStatusText("Optimizing photos…");
+      [front, side] = await Promise.all([downscalePhoto(front), downscalePhoto(side)]);
+      setFrontImage(front);
+      setSideImage(side);
+    } catch {}
     try {
       setStatusText("Detecting 478 facial landmarks…");
       let measurements: { front: { name: string; value: number; unit: "ratio" | "deg" | "percent"; raw: string }[]; side: { name: string; value: number; unit: "ratio" | "deg" | "percent"; raw: string }[] } | undefined;
@@ -1405,7 +1415,7 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
       let keys: { front: Record<string, { x: number; y: number }>; side: Record<string, { x: number; y: number }> } | undefined;
       try {
         const { measureFaces } = await import("@/lib/faceiq/landmarks");
-        const m = await measureFaces(frontImage, sideImage);
+        const m = await measureFaces(front, side);
         if (m.frontDetected || m.sideDetected) {
           measurements = { front: m.front, side: m.side };
           points = { front: m.frontPoints, side: m.sidePoints };
@@ -1417,12 +1427,12 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
       } catch {
         setStatusText("Scoring with AI (grounded in measurements)…");
       }
-      const data = await runAnalysis({ data: { frontImage, sideImage, measurements } });
+      const data = await runAnalysis({ data: { frontImage: front, sideImage: side, measurements } });
       setResult(data);
       // auto-save with real geometry + points for overlays
       const extra: ScanExtra | undefined =
         measurements || points ? { ...(measurements ? { measurements: { front: measurements.front.map((x) => ({ name: x.name, raw: x.raw, value: x.value })), side: measurements.side.map((x) => ({ name: x.name, raw: x.raw, value: x.value })) } } : {}), ...(points ? { points } : {}), ...(keys ? { keys } : {}) } : undefined;
-      onSave(frontImage, sideImage, data, extra);
+      onSave(front, side, data, extra);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed"); } finally { setIsAnalyzing(false); setStatusText(null); }
   };
   const reset = () => { setFrontImage(null); setSideImage(null); setResult(null); setError(null); };

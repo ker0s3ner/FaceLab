@@ -115,16 +115,17 @@ export function useFaceIQStore() {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
     } catch (err) {
-      // QuotaExceededError from large photo data URLs would blank-screen the
-      // dashboard (error thrown inside passive effect). Fall back to a slim
-      // snapshot without full-res photos so the app stays alive.
+      // QuotaExceededError would blank-screen the dashboard (thrown inside a
+      // passive effect). Photos are downscaled at upload so this should rarely
+      // trigger; as a last resort drop only oversized mesh points (photos are
+      // never blanked — cloud holds the backup).
       try {
         const slim = {
           ...state,
           analyses: state.analyses.map((a) => ({
             ...a,
-            front_photo: a.front_photo.length > 200_000 ? "" : a.front_photo,
-            side_photo: a.side_photo.length > 200_000 ? "" : a.side_photo,
+            front_photo: a.front_photo.length > 1_500_000 ? "" : a.front_photo,
+            side_photo: a.side_photo.length > 1_500_000 ? "" : a.side_photo,
             landmarkPoints: undefined,
           })),
         };
