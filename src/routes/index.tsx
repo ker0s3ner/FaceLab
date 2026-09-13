@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FaceAnalyzer } from "@/components/face-analyzer";
+import { AuthNavLink } from "@/components/auth-nav-link";
 import {
   CtaButton,
   Eyebrow,
@@ -108,12 +109,14 @@ function Index() {
               {NAV_LINKS.map((link) => (
                 <NavLink key={link.href} label={link.label} href={link.href} />
               ))}
+              <AuthNavLink />
               <CtaButton href="#analyze" className="hidden md:inline-flex">
                 Try Free
               </CtaButton>
             </div>
 
-            <div className="flex items-center gap-1 sm:gap-2 md:hidden flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 md:hidden flex-shrink-0">
+              <AuthNavLink />
               <CtaButton
                 href="#analyze"
                 className="text-[10px] sm:text-[11px] px-3 sm:px-4 py-1.5 hidden-shrink"
