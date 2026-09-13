@@ -150,16 +150,17 @@ function BellCurve({ score }: { score: number }) {
   const markerX = xForScore(Math.max(0, Math.min(10, score)));
   const markerY = 50 - (gauss(score) / maxG) * 36;
   const percentile = score >= 9 ? "Top 1%" : score >= 7.5 ? "Top 12%" : score >= 6 ? "Top 30%" : score >= 5 ? "Average" : "Bottom 30%";
+  const gradId = `bellGrad-${score.toFixed(1).replace(".", "_")}`;
   return (
     <div className="relative w-full">
       <svg viewBox="0 0 200 60" className="h-20 w-full">
         <defs>
-          <linearGradient id="bellGrad" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#18181b" stopOpacity="0.08" />
             <stop offset="100%" stopColor="#18181b" stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path d={`${d} L 190 50 L 10 50 Z`} fill="url(#bellGrad)" stroke="none" />
+        <path d={`${d} L 190 50 L 10 50 Z`} fill={`url(#${gradId})`} stroke="none" />
         <path d={d} fill="none" stroke="#a1a1aa" strokeWidth="1.2" />
         <line x1={markerX} y1={markerY} x2={markerX} y2="50" stroke="#18181b" strokeWidth="1.2" strokeDasharray="3 3" />
         <circle cx={markerX} cy={markerY} r="4" fill="#18181b" stroke="white" strokeWidth="1.5" />

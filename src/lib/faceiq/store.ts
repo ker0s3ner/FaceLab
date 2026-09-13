@@ -51,11 +51,23 @@ function load(): FaceIQState {
 }
 
 export function useFaceIQStore() {
-  const [state, setState] = useState<FaceIQState>(() => load());
+  const [state, setState] = useState<FaceIQState>(() => {
+    // SSR-safe: initialize empty, hydrate from localStorage in effect to avoid hydration mismatch (blank screen)
+    if (typeof window === "undefined") return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
+    return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
+  });
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    const loaded = load();
+    setState(loaded);
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem(KEY, JSON.stringify(state));
-  }, [state]);
+  }, [state, hydrated]);
 
   const addAnalysis = (front: string, side: string, result: AnalysisResult) => {
     const id = `cm${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
