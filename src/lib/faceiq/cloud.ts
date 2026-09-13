@@ -67,18 +67,25 @@ export async function fetchCloud(): Promise<{ snapshot: CloudSnapshot; tablesMis
       if (isMissingTable(stateRes.error)) return { snapshot: emptySnapshot(), tablesMissing: true };
       throw stateRes.error;
     }
-    const analyses: Analysis[] = (scansRes.data ?? []).map((row) => ({
-      id: row.client_id,
-      created_at: row.created_at,
-      label: row.label,
-      front_photo: row.front_photo ?? "",
-      side_photo: row.side_photo ?? "",
-      pillars: (row.pillars as unknown as Pillar[]) ?? [],
-      overall_score: Number(row.overall_score ?? 0),
-      legacy_result: (row.legacy_result as unknown as Analysis["legacy_result"]) ?? undefined,
-      measurements: (row.measurements as unknown as Analysis["measurements"]) ?? undefined,
-      landmarkPoints: (row.landmark_points as unknown as Analysis["landmarkPoints"]) ?? undefined,
-    }));
+    const analyses: Analysis[] = (scansRes.data ?? []).map((row) => {
+      // landmark_points may pack {front, side, keys} (keys = named points for overlays)
+      const lp = row.landmark_points as unknown as
+        | { front?: { x: number; y: number }[]; side?: { x: number; y: number }[]; keys?: Analysis["keyPoints"] }
+        | null;
+      return {
+        id: row.client_id,
+        created_at: row.created_at,
+        label: row.label,
+        front_photo: row.front_photo ?? "",
+        side_photo: row.side_photo ?? "",
+        pillars: (row.pillars as unknown as Pillar[]) ?? [],
+        overall_score: Number(row.overall_score ?? 0),
+        legacy_result: (row.legacy_result as unknown as Analysis["legacy_result"]) ?? undefined,
+        measurements: (row.measurements as unknown as Analysis["measurements"]) ?? undefined,
+        landmarkPoints: lp && Array.isArray(lp.front) ? { front: lp.front, side: Array.isArray(lp.side) ? lp.side : [] } : undefined,
+        keyPoints: lp?.keys ?? undefined,
+      };
+    });
     const sRow = stateRes.data as { gender?: string; ethnicity?: string; plan_actions?: unknown } | null;
     return {
       snapshot: {
@@ -139,7 +146,9 @@ export async function pushAnalysis(a: Analysis): Promise<boolean> {
         overall_score: a.overall_score,
         legacy_result: (a.legacy_result ?? null) as never,
         measurements: (a.measurements ?? null) as never,
-        landmark_points: (a.landmarkPoints ?? null) as never,
+        landmark_points: (a.landmarkPoints || a.keyPoints
+          ? ({ ...(a.landmarkPoints ?? { front: [], side: [] }), ...(a.keyPoints ? { keys: a.keyPoints } : {}) } as never)
+          : null) as never,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "client_id" },

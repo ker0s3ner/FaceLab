@@ -11,6 +11,7 @@ import {
   pushUserState as cloudPushState,
   type CloudStatus,
 } from "./cloud";
+import { severityForScore } from "./flaws";
 
 const KEY = "faceiq_state_v2";
 const LEGACY_KEY = "faceiq_scans";
@@ -155,6 +156,7 @@ export function useFaceIQStore() {
     extra?: {
       measurements?: { front: { name: string; raw: string; value: number }[]; side: { name: string; raw: string; value: number }[] };
       points?: { front: { x: number; y: number }[]; side: { x: number; y: number }[] };
+      keys?: { front: Record<string, { x: number; y: number }>; side: Record<string, { x: number; y: number }> };
     },
   ) => {
     const id = `cm${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -169,6 +171,7 @@ export function useFaceIQStore() {
       legacy_result: result,
       measurements: extra?.measurements,
       landmarkPoints: extra?.points,
+      keyPoints: extra?.keys,
     };
     setState((s) => ({ ...s, analyses: [...s.analyses, analysis], selectedId: id }));
     // Cross-device backup (fire-and-forget; local stays source of truth)
@@ -201,7 +204,33 @@ export function useFaceIQStore() {
   });
   const removePlanAction = (idx: number) => setState((s) => ({ ...s, planActions: s.planActions.filter((_, i) => i !== idx).map((a, i) => ({ ...a, order_index: i })) }));
 
-  return { state, setState, addAnalysis, select, removeAnalysis, clearAll, addPlanAction, reorderPlan, removePlanAction, cloudStatus };
+  /** Manual ratio override from the detail modal (Edit tab). Persists + backs up. */
+  const overrideRatio = (analysisId: string, ratioName: string, value: number) => {
+    const v = Math.max(1, Math.min(10, Number(value.toFixed(1))));
+    let updated: Analysis | null = null;
+    setState((s) => ({
+      ...s,
+      analyses: s.analyses.map((a) => {
+        if (a.id !== analysisId) return a;
+        const next: Analysis = {
+          ...a,
+          pillars: a.pillars.map((p) => ({
+            ...p,
+            ratios: p.ratios.map((r) =>
+              r.name === ratioName
+                ? { ...r, value: v, severity_tag: severityForScore(v), delta_from_ideal: Number((v - 8).toFixed(2)) }
+                : r,
+            ),
+          })),
+        };
+        updated = next;
+        return next;
+      }),
+    }));
+    if (updated) cloudPush(updated as Analysis).then((ok) => ok && setCloudStatus("synced"));
+  };
+
+  return { state, setState, addAnalysis, select, removeAnalysis, clearAll, addPlanAction, reorderPlan, removePlanAction, overrideRatio, cloudStatus };
 }
 
 export function mockRatiosForAnalysis(analysis: Analysis): typeof analysis.pillars {

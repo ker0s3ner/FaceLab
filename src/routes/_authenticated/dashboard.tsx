@@ -12,8 +12,12 @@ import { RatingDisplay } from "@/components/rating-display";
 import { Sparkles, Loader2, Shield, Trash2, Brain, Save } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { analyzeFace, type AnalysisResult } from "@/lib/analyze.functions";
-import { regionBoxFor, severityColor } from "@/lib/faceiq/types";
+import { regionBoxFor, severityColor, type PillarName } from "@/lib/faceiq/types";
+import { flawStatesFor } from "@/lib/faceiq/flaws";
 import { TREATMENTS } from "@/lib/faceiq/treatments";
+import { RatioOverlay } from "@/components/ratio-overlay";
+import { FlawAccordion } from "@/components/flaw-accordion";
+import { RatioModal, type RatioModalContext } from "@/components/ratio-modal";
 
 const title = "Your dashboard — FaceLab";
 const description = "Your FaceLab account dashboard.";
@@ -37,12 +41,13 @@ function Dashboard() {
   const { user } = Route.useRouteContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { state, addAnalysis, select, clearAll, cloudStatus } = useFaceIQStore();
+  const { state, addAnalysis, select, clearAll, cloudStatus, overrideRatio } = useFaceIQStore();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [analysisPillar, setAnalysisPillar] = useState<string>("Harmony");
   const [showNewScan, setShowNewScan] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [modal, setModal] = useState<RatioModalContext | null>(null);
   const goToPillar = (pillar: string) => {
     setAnalysisPillar(pillar);
     setActiveTab("analysis");
@@ -67,6 +72,30 @@ function Dashboard() {
       if (prev.length >= 2) return [prev[1]!, id];
       return [...prev, id];
     });
+  };
+
+  // Open the ratio detail modal for a ratio by name (searches selected analysis)
+  const openRatioModal = (ratioName: string) => {
+    if (!selected) return;
+    for (const p of selected.pillars) {
+      const idx = p.ratios.findIndex((r: any) => r.name === ratioName);
+      if (idx >= 0) {
+        const r = p.ratios[idx] as any;
+        const side = r.view === "side";
+        setModal({
+          ratios: p.ratios as any[],
+          index: idx,
+          pillar: p.name,
+          photoSrc: side ? selected.side_photo : selected.front_photo,
+          keys: ((side ? selected.keyPoints?.side : selected.keyPoints?.front) ?? {}) as Record<string, { x: number; y: number }>,
+          history: state.analyses.map((a) => {
+            const found = a.pillars.flatMap((pp) => pp.ratios).find((rr) => rr.name === ratioName);
+            return found ? { label: a.label, value: found.value } : null;
+          }).filter((h): h is { label: string; value: number } => !!h),
+        });
+        return;
+      }
+    }
   };
 
   return (
@@ -126,11 +155,43 @@ function Dashboard() {
 
       {selected && !showNewScan && (
         <>
-          {activeTab === "overview" && <OverviewTab selected={selected} onViewPillar={goToPillar} />}
-          {activeTab === "analysis" && <AnalysisTab key={analysisPillar} selected={selected} initialPillar={analysisPillar} />}
+          {activeTab === "overview" && (
+            <OverviewTab
+              selected={selected}
+              onViewPillar={goToPillar}
+              earliest={state.analyses[0] ?? null}
+              onOpenRatio={openRatioModal}
+            />
+          )}
+          {activeTab === "analysis" && (
+            <AnalysisTab
+              key={analysisPillar}
+              selected={selected}
+              initialPillar={analysisPillar}
+              earliest={state.analyses[0] ?? null}
+              onOpenRatio={openRatioModal}
+            />
+          )}
           {activeTab === "plan" && <PlanTab selected={selected} />}
           {activeTab === "simulate" && <SimulateTab selected={selected} />}
         </>
+      )}
+      {modal && selected && (
+        <RatioModal
+          ctx={modal}
+          onNavigate={(i) => {
+            const r = modal.ratios[i] as any;
+            const side = r?.view === "side";
+            setModal({
+              ...modal,
+              index: i,
+              photoSrc: side ? selected.side_photo : selected.front_photo,
+              keys: ((side ? selected.keyPoints?.side : selected.keyPoints?.front) ?? {}) as Record<string, { x: number; y: number }>,
+            });
+          }}
+          onClose={() => setModal(null)}
+          onOverride={(name, val) => overrideRatio(selected.id, name, val)}
+        />
       )}
 
       {state.analyses.length > 0 && (
@@ -243,7 +304,7 @@ function BellCurve({ score, history = [], label = "You", potential, target }: { 
   );
 }
 
-function OverviewTab({ selected, onViewPillar }: { selected: NonNullable<ReturnType<typeof useFaceIQStore>["state"]["analyses"][number]>; onViewPillar?: (pillar: string) => void }) {
+function OverviewTab({ selected, onViewPillar, earliest, onOpenRatio }: { selected: NonNullable<ReturnType<typeof useFaceIQStore>["state"]["analyses"][number]>; onViewPillar?: (pillar: string) => void; earliest?: any; onOpenRatio?: (ratioName: string) => void }) {
   const { state, setState } = useFaceIQStore();
   const pillars = selected.pillars;
   const [overallPillar, setOverallPillar] = useState<string>("Harmony");
@@ -367,60 +428,38 @@ function OverviewTab({ selected, onViewPillar }: { selected: NonNullable<ReturnT
         </div>
       </Card>
 
-      {/* Key Strengths — now AI-driven, in-depth */}
+      {/* Key Strengths — flaw/strength hierarchy with IMPACT + contributing ratios */}
       <Card className="p-6">
-        <h4 className="font-medium">Key Strengths <span className="ml-2 text-xs font-normal text-zinc-400">{strengthsFiltered.length} IDEAL</span></h4>
+        <h4 className="font-medium">Key Strengths</h4>
         <div className="mt-3 flex gap-2 overflow-x-auto">
-          {["Harmony", "Angularity", "Dimorphism", "Features"].map((n) => (
+          {(["Harmony", "Angularity", "Dimorphism", "Features"] as const).map((n) => (
             <button key={n} onClick={() => setStrengthPillar(n)} className={`rounded-full px-3 py-1 text-xs ${strengthPillar === n ? "bg-zinc-900 text-white" : "border dark:border-zinc-700"}`}>{n}</button>
           ))}
         </div>
-        <ul className="mt-4 space-y-2">
-          {(strengthsExpanded ? strengthsFiltered : strengthsFiltered.slice(0, 3)).map((r) => (
-            <li key={r.name} onClick={() => setOpenStrength(openStrength === r.name ? null : r.name)} className="cursor-pointer rounded-lg border px-3 py-2 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-              <div className="flex items-center gap-2 text-sm">
-                <span className={`rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>IDEAL</span>
-                <span className="flex-1 truncate font-medium">{r.name}</span>
-                <span className="tabular-nums text-xs">{r.raw_measurement} · {r.value.toFixed(1)}/10</span>
-                <span className="text-zinc-400">{openStrength === r.name ? "−" : "›"}</span>
-              </div>
-              {openStrength === r.name && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI: Well within ideal range — contributes positively to overall harmony."} Ideal {r.ideal_range[0]}–{r.ideal_range[1]} · {r.view} view</p>}
-            </li>
-          ))}
-          {strengthsFiltered.length === 0 && <li className="text-sm text-zinc-400">No IDEAL in this pillar — try another pillar. All ratios unlocked.</li>}
-        </ul>
-        {strengthsFiltered.length > 3 && (
-          <button onClick={() => setStrengthsExpanded((v) => !v)} className="mt-3 text-xs font-medium text-zinc-600 underline">
-            {strengthsExpanded ? "Show less" : `Show ${strengthsFiltered.length - 3} More`}
-          </button>
-        )}
+        <div className="mt-4">
+          <FlawAccordion
+            items={flawStatesFor(selected, earliest ?? null, strengthPillar as any).filter((f) => f.kind === "strength")}
+            onOpenRatio={(name) => onOpenRatio?.(name)}
+            emptyText="No strengths flagged in this pillar yet."
+          />
+        </div>
       </Card>
 
-      {/* Areas of Improvement — AI-driven */}
+      {/* Areas of Improvement — flaw hierarchy with IMPACT/ROLLING */}
       <Card className="p-6">
-        <h4 className="font-medium">Areas of Improvement <span className="ml-2 text-xs font-normal text-zinc-400">{improvementsFiltered.length} flagged</span></h4>
+        <h4 className="font-medium">Areas of Improvement</h4>
         <div className="mt-3 flex gap-2 overflow-x-auto">
-          {["Harmony", "Angularity", "Dimorphism", "Features"].map((n) => (
+          {(["Harmony", "Angularity", "Dimorphism", "Features"] as const).map((n) => (
             <button key={n} onClick={() => setImprovePillar(n)} className={`rounded-full px-3 py-1 text-xs ${improvePillar === n ? "bg-zinc-900 text-white" : "border dark:border-zinc-700"}`}>{n}</button>
           ))}
         </div>
-        <ul className="mt-4 space-y-2">
-          {(improvementsExpanded ? improvementsFiltered : improvementsFiltered.slice(0, 3)).map((r) => (
-            <li key={r.name} onClick={() => setOpenImprove(openImprove === r.name ? null : r.name)} className="cursor-pointer rounded-lg border px-3 py-2 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-              <div className="flex items-center gap-2 text-sm">
-                <span className={`rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>{r.severity_tag}</span>
-                <span className="flex-1 truncate font-medium">{r.name}</span>
-                <span className="tabular-nums text-xs text-red-600">{r.delta_from_ideal.toFixed(2)} · {r.raw_measurement}</span>
-                <span className="text-zinc-400">{openImprove === r.name ? "−" : "›"}</span>
-              </div>
-              {openImprove === r.name && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI: Distance from ideal impacts harmony. Consider Plan/Simulate for options."} Ideal {r.ideal_range[0]}–{r.ideal_range[1]} · {r.view} view · value {r.value.toFixed(1)}/10</p>}
-            </li>
-          ))}
-          {improvementsFiltered.length === 0 && <li className="text-sm text-zinc-400">No severe ratios — unlocked view.</li>}
-        </ul>
-        {improvementsFiltered.length > 3 && (
-          <button onClick={() => setImprovementsExpanded((v) => !v)} className="mt-3 text-xs font-medium underline">{improvementsExpanded ? "Show less" : `Show ${improvementsFiltered.length - 3} More`}</button>
-        )}
+        <div className="mt-4">
+          <FlawAccordion
+            items={flawStatesFor(selected, earliest ?? null, improvePillar as any).filter((f) => f.kind === "flaw")}
+            onOpenRatio={(name) => onOpenRatio?.(name)}
+            emptyText="No severe flaws in this pillar — unlocked view."
+          />
+        </div>
       </Card>
 
       {/* Score Card */}
@@ -526,9 +565,10 @@ function OverviewTab({ selected, onViewPillar }: { selected: NonNullable<ReturnT
   );
 }
 
-function LandmarkPhoto({ src, points, enriched, highlightId, setHighlightId, landmarkPos, view, pillar }: {
+function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightId, landmarkPos, view, pillar }: {
   src: string;
   points?: { x: number; y: number }[];
+  keys?: Record<string, { x: number; y: number }>;
   enriched: any[];
   highlightId: string | null;
   setHighlightId: (v: string | null) => void;
@@ -537,8 +577,13 @@ function LandmarkPhoto({ src, points, enriched, highlightId, setHighlightId, lan
   pillar: string;
 }) {
   const [meshOn, setMeshOn] = useState(true);
-  const [hoverPt, setHoverPt] = useState<number | null>(null);
   const shown = (points ?? []).filter((_, i) => i % 2 === 0).slice(0, 160);
+  const active = enriched.find((r: any) => r.name === highlightId) ?? null;
+  const markerPos = (name: string): { x: number; y: number } => {
+    const box = regionBoxFor(name, (view === "side" ? "side" : "front") as "front" | "side");
+    if (box) return { x: box.x + box.w / 2, y: box.y };
+    return landmarkPos[name] ?? { x: 50, y: 50 };
+  };
   return (
     <div className="relative">
       <img src={src} alt={`${pillar} ${view}`} className="aspect-[3/4] w-full object-cover bg-zinc-100" />
@@ -550,32 +595,27 @@ function LandmarkPhoto({ src, points, enriched, highlightId, setHighlightId, lan
           ))}
         </svg>
       )}
-      {/* region boxes around face parts (Dimorphism / Features / Angularity) */}
-      {enriched.map((r: any) => {
-        const box = regionBoxFor(r.name, (view === "side" ? "side" : "front") as "front" | "side");
-        if (!box) return null;
-        const active = highlightId === r.name;
+      {/* active-ratio measurement overlay (line / curve / region / angle / ruler) */}
+      {active && (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full pointer-events-none">
+          <RatioOverlay
+            ratioName={active.name}
+            pillar={pillar as PillarName}
+            view={(view === "side" ? "side" : "front") as "front" | "side"}
+            raw={active.raw_measurement}
+            keys={keys ?? {}}
+          />
+        </svg>
+      )}
+      {/* markers for all listed ratios */}
+      {enriched.slice(0, 12).map((r: any) => {
+        const pos = markerPos(r.name);
+        const isActive = highlightId === r.name;
         return (
           <button
             key={r.name}
-            onClick={() => setHighlightId(active ? null : r.name)}
-            className={`absolute rounded-md border-2 transition-colors ${active ? "border-emerald-400 bg-emerald-400/10" : "border-white/50 bg-transparent hover:border-white"}`}
-            style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }}
-            title={`${r.name} — ${r.raw_measurement}`}
-          >
-            <span className={`absolute -top-2 left-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold shadow ${active ? "bg-emerald-500 text-white" : "bg-white/90 text-zinc-500"}`}>?</span>
-          </button>
-        );
-      })}
-      {/* ratio markers anchored to anatomy (Harmony numeric ratios without boxes) */}
-      {enriched.slice(0, 8).map((r: any) => {
-        if (regionBoxFor(r.name, (view === "side" ? "side" : "front") as "front" | "side")) return null;
-        const pos = landmarkPos[r.name] ?? { x: 50, y: 50 };
-        return (
-          <button
-            key={r.name}
-            onClick={() => setHighlightId(highlightId === r.name ? null : r.name)}
-            className={`absolute flex h-6 w-6 items-center justify-center rounded-full border-2 bg-white text-[10px] font-bold shadow transition-colors ${highlightId === r.name ? "border-emerald-500 text-emerald-600" : "border-zinc-300 text-zinc-500"}`}
+            onClick={() => setHighlightId(isActive ? null : r.name)}
+            className={`absolute flex h-6 w-6 items-center justify-center rounded-full border-2 bg-white text-[10px] font-bold shadow transition-colors ${isActive ? "border-emerald-500 text-emerald-600" : "border-zinc-300/80 text-zinc-500"}`}
             style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }}
             title={`${r.name} — ${r.raw_measurement}`}
           >
@@ -583,13 +623,9 @@ function LandmarkPhoto({ src, points, enriched, highlightId, setHighlightId, lan
           </button>
         );
       })}
-      {highlightId && (() => {
-        const pos = landmarkPos[highlightId] ?? { x: 50, y: 50 };
-        return <div className="absolute h-0.5 w-16 bg-emerald-400/80 pointer-events-none" style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }} />;
-      })()}
-      {highlightId && (
+      {active && (
         <div className="absolute left-3 top-12 max-w-[70%] rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white dark:bg-white dark:text-zinc-900 shadow">
-          {highlightId} — {enriched.find((r: any) => r.name === highlightId)?.raw_measurement ?? ""} · {enriched.find((r: any) => r.name === highlightId)?.description ?? ""}
+          {active.name} — {active.raw_measurement}
           <div className="mt-1 h-0.5 w-full bg-emerald-400" />
         </div>
       )}
@@ -603,7 +639,7 @@ function LandmarkPhoto({ src, points, enriched, highlightId, setHighlightId, lan
   );
 }
 
-function AnalysisTab({ selected, initialPillar }: { selected: any; initialPillar?: string }) {
+function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selected: any; initialPillar?: string; earliest?: any; onOpenRatio?: (ratioName: string) => void }) {
   const [pillar, setPillar] = useState(initialPillar ?? "Harmony");
   const [view, setView] = useState<"front" | "side">("front");
   const [showAllRatios, setShowAllRatios] = useState(false);
@@ -699,6 +735,7 @@ function AnalysisTab({ selected, initialPillar }: { selected: any; initialPillar
           <LandmarkPhoto
             src={view === "front" ? selected.front_photo : selected.side_photo}
             points={view === "front" ? selected.landmarkPoints?.front : selected.landmarkPoints?.side}
+            keys={view === "front" ? selected.keyPoints?.front : selected.keyPoints?.side}
             enriched={enriched}
             highlightId={highlightId}
             setHighlightId={setHighlightId}
@@ -728,11 +765,16 @@ function AnalysisTab({ selected, initialPillar }: { selected: any; initialPillar
 
           <h4 className="mt-4 font-medium">Your {view} Ratios <span className="ml-1 text-xs font-normal text-zinc-400">{fallbackRatios.length} measured</span></h4>
           <ul className="mt-3 space-y-2 pr-1">
-            {enriched.map((r: any) => (
+            {enriched.map((r: any) => {
+              const isActive = highlightId === r.name;
+              const accent = r.severity_tag === "SEVERE" || r.severity_tag === "EXTREME" ? "border-l-red-500" : r.severity_tag === "IDEAL" ? "border-l-emerald-500" : "border-l-zinc-300 dark:border-l-zinc-600";
+              return (
               <li
                 key={r.name}
-                onClick={() => setHighlightId(highlightId === r.name ? null : r.name)}
-                className={`cursor-pointer rounded-lg border px-3 py-2.5 transition-colors ${highlightId === r.name ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800" : "border-zinc-200 bg-white hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"}`}
+                onClick={() => setHighlightId(isActive ? null : r.name)}
+                onDoubleClick={() => onOpenRatio?.(r.name)}
+                className={`cursor-pointer rounded-lg border border-l-4 px-3 py-2.5 transition-colors ${accent} ${isActive ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800" : "bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800"}`}
+                title="Click to highlight on photo · double-click for full detail"
               >
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
@@ -745,11 +787,18 @@ function AnalysisTab({ selected, initialPillar }: { selected: any; initialPillar
                     <span className={`inline-flex rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>{r.severity_tag}</span>
                     <p className="mt-1 text-xs tabular-nums text-zinc-500">{r.raw_measurement ?? r.value.toFixed(2)}</p>
                   </div>
-                  <span className="text-zinc-400">{highlightId === r.name ? "−" : "›"}</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onOpenRatio?.(r.name); }}
+                    className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-zinc-500 hover:bg-zinc-900 hover:text-white dark:border-zinc-700"
+                    title="Open full detail"
+                  >
+                    ⤢
+                  </button>
                 </div>
-                {highlightId === r.name && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI measurement — tap again to hide."} Ideal {r.ideal_label ?? (Array.isArray(r.ideal_range) ? r.ideal_range.join("–") : "")} · raw {r.raw_measurement} · {r.view} view{r.measured ? " · ● measured" : ""}</p>}
+                {isActive && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{r.description ?? "AI measurement — tap again to hide."} Ideal {r.ideal_label ?? (Array.isArray(r.ideal_range) ? r.ideal_range.join("–") : "")} · raw {r.raw_measurement} · {r.view} view{r.measured ? " · ● measured" : ""}</p>}
               </li>
-            ))}
+              );
+            })}
           </ul>
           {fallbackRatios.length > 10 && (
             <button onClick={() => setShowAllRatios((v) => !v)} className="mt-3 text-xs font-medium underline">
@@ -757,38 +806,28 @@ function AnalysisTab({ selected, initialPillar }: { selected: any; initialPillar
             </button>
           )}
 
-          {/* Key Strengths in-context */}
+          {/* Key Strengths in-context — flaw hierarchy */}
           <div className="mt-6 rounded-xl border p-3 dark:border-zinc-800">
             <p className="text-sm font-medium">Key Strengths</p>
-            <ul className="mt-2 space-y-1.5">
-              {(strengthExtra ? ideal : ideal.slice(0, 2)).map((r: any) => (
-                <li key={r.name} className="flex items-center gap-2 text-sm">
-                  <span className={`rounded border px-2 py-0.5 text-xs ${severityColor("IDEAL")}`}>IDEAL</span>
-                  <span className="flex-1 truncate">{r.name}</span>
-                  <span className="tabular-nums text-xs">10.0</span>
-                  <span className="text-zinc-400">›</span>
-                </li>
-              ))}
-              {ideal.length === 0 && <li className="text-xs text-zinc-400">No IDEAL in this pillar — all unlocked.</li>}
-            </ul>
-            {ideal.length > 2 && <button onClick={() => setStrengthExtra((v) => !v)} className="mt-2 text-xs underline">{strengthExtra ? "Show less" : `Show ${ideal.length - 2} More`}</button>}
+            <div className="mt-2">
+              <FlawAccordion
+                items={flawStatesFor(selected, earliest ?? null, pillar as any).filter((f) => f.kind === "strength")}
+                onOpenRatio={(name) => onOpenRatio?.(name)}
+                emptyText="No strengths flagged here yet."
+              />
+            </div>
           </div>
 
-          {/* Areas of Improvement in-context */}
+          {/* Areas of Improvement in-context — flaw hierarchy */}
           <div className="mt-3 rounded-xl border p-3 dark:border-zinc-800">
             <p className="text-sm font-medium">Areas of Improvement</p>
-            <ul className="mt-2 space-y-1.5">
-              {(improveExtra ? bad : bad.slice(0, 2)).map((r: any) => (
-                <li key={r.name} className="flex items-center gap-2 text-sm">
-                  <span className={`rounded border px-2 py-0.5 text-xs ${severityColor(r.severity_tag)}`}>{r.severity_tag}</span>
-                  <span className="flex-1 truncate">{r.name}</span>
-                  <span className="tabular-nums text-xs text-red-600">{r.delta_from_ideal?.toFixed(2)}</span>
-                  <span className="text-zinc-400">›</span>
-                </li>
-              ))}
-              {bad.length === 0 && <li className="text-xs text-zinc-400">No severe ratios — unlocked view.</li>}
-            </ul>
-            {bad.length > 2 && <button onClick={() => setImproveExtra((v) => !v)} className="mt-2 text-xs underline">{improveExtra ? "Show less" : `Show ${bad.length - 2} More`}</button>}
+            <div className="mt-2">
+              <FlawAccordion
+                items={flawStatesFor(selected, earliest ?? null, pillar as any).filter((f) => f.kind === "flaw")}
+                onOpenRatio={(name) => onOpenRatio?.(name)}
+                emptyText="No severe flaws — unlocked view."
+              />
+            </div>
           </div>
         </Card>
       </div>
@@ -1348,7 +1387,13 @@ function FaceGPTTab({ selected }: { selected: any }) {
   );
 }
 
-function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, result: AnalysisResult, extra?: { measurements?: { front: { name: string; raw: string; value: number }[]; side: { name: string; raw: string; value: number }[] }; points?: { front: { x: number; y: number }[]; side: { x: number; y: number }[] } }) => void }) {
+type ScanExtra = {
+  measurements?: { front: { name: string; raw: string; value: number }[]; side: { name: string; raw: string; value: number }[] };
+  points?: { front: { x: number; y: number }[]; side: { x: number; y: number }[] };
+  keys?: { front: Record<string, { x: number; y: number }>; side: Record<string, { x: number; y: number }> };
+};
+
+function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, result: AnalysisResult, extra?: ScanExtra) => void }) {
   const runAnalysis = useServerFn(analyzeFace);
   const [frontImage, setFrontImage] = useState<string | null>(null);
   const [sideImage, setSideImage] = useState<string | null>(null);
@@ -1364,12 +1409,14 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
       setStatusText("Detecting 478 facial landmarks…");
       let measurements: { front: { name: string; value: number; unit: "ratio" | "deg" | "percent"; raw: string }[]; side: { name: string; value: number; unit: "ratio" | "deg" | "percent"; raw: string }[] } | undefined;
       let points: { front: { x: number; y: number }[]; side: { x: number; y: number }[] } | undefined;
+      let keys: { front: Record<string, { x: number; y: number }>; side: Record<string, { x: number; y: number }> } | undefined;
       try {
         const { measureFaces } = await import("@/lib/faceiq/landmarks");
         const m = await measureFaces(frontImage, sideImage);
         if (m.frontDetected || m.sideDetected) {
           measurements = { front: m.front, side: m.side };
           points = { front: m.frontPoints, side: m.sidePoints };
+          keys = { front: m.frontKeys, side: m.sideKeys };
           setStatusText(`Landmarks found (${m.front.length + m.side.length} measures) — scoring with AI…`);
         } else {
           setStatusText("No face mesh found — scoring visually…");
@@ -1380,8 +1427,8 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
       const data = await runAnalysis({ data: { frontImage, sideImage, measurements } });
       setResult(data);
       // auto-save with real geometry + points for overlays
-      const extra: { measurements?: { front: { name: string; raw: string; value: number }[]; side: { name: string; raw: string; value: number }[] }; points?: { front: { x: number; y: number }[]; side: { x: number; y: number }[] } } | undefined =
-        measurements || points ? { ...(measurements ? { measurements: { front: measurements.front.map((x) => ({ name: x.name, raw: x.raw, value: x.value })), side: measurements.side.map((x) => ({ name: x.name, raw: x.raw, value: x.value })) } } : {}), ...(points ? { points } : {}) } : undefined;
+      const extra: ScanExtra | undefined =
+        measurements || points ? { ...(measurements ? { measurements: { front: measurements.front.map((x) => ({ name: x.name, raw: x.raw, value: x.value })), side: measurements.side.map((x) => ({ name: x.name, raw: x.raw, value: x.value })) } } : {}), ...(points ? { points } : {}), ...(keys ? { keys } : {}) } : undefined;
       onSave(frontImage, sideImage, data, extra);
     } catch (err) { setError(err instanceof Error ? err.message : "Failed"); } finally { setIsAnalyzing(false); setStatusText(null); }
   };

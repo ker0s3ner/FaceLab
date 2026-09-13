@@ -44,6 +44,8 @@ export interface Analysis {
   // real geometry: raw MediaPipe measurements + downsampled landmark points for overlays
   measurements?: { front: { name: string; raw: string; value: number }[]; side: { name: string; raw: string; value: number }[] } | undefined;
   landmarkPoints?: { front: { x: number; y: number }[]; side: { x: number; y: number }[] } | undefined;
+  // index-stable named anatomical points (normalized 0–1) for overlay geometry
+  keyPoints?: { front: Record<string, { x: number; y: number }>; side: Record<string, { x: number; y: number }> } | undefined;
 }
 
 export interface Treatment {

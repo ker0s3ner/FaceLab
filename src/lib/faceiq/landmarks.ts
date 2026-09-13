@@ -233,7 +233,22 @@ export type FaceMeasurements = {
   sideDetected: boolean;
   frontPoints: Point[];
   sidePoints: Point[];
+  /** named anatomical points (normalized 0–1) for overlay geometry — index-stable */
+  frontKeys: Record<string, Point>;
+  sideKeys: Record<string, Point>;
 };
+
+const KEY_NAMES = Object.keys(I) as (keyof typeof I)[];
+
+function keyPoints(lm: { x: number; y: number }[] | undefined): Record<string, Point> {
+  const out: Record<string, Point> = {};
+  if (!lm) return out;
+  for (const name of KEY_NAMES) {
+    const l = lm[I[name]];
+    if (l) out[name] = { x: Number(l.x.toFixed(4)), y: Number(l.y.toFixed(4)) };
+  }
+  return out;
+}
 
 /** Runs landmark detection on both photos and returns anthropometric measurements. */
 export async function measureFaces(
@@ -241,10 +256,10 @@ export async function measureFaces(
   sideImage: string,
 ): Promise<FaceMeasurements> {
   const [front, side] = await Promise.all([
-    measure(frontImage, "front"),
-    measure(sideImage, "side"),
+    measureFull(frontImage, "front"),
+    measureFull(sideImage, "side"),
   ]);
-  // downsample points to keep localStorage small (every 3rd of 478 ≈ 160 pts)
+  // downsample mesh points to keep localStorage small (every 3rd of 478 ≈ 160 pts)
   const slim = (pts?: Point[]) => (pts ?? []).filter((_, i) => i % 3 === 0).map((p) => ({ x: Number(p.x.toFixed(4)), y: Number(p.y.toFixed(4)) }));
   return {
     front: front.measurements,
@@ -253,5 +268,26 @@ export async function measureFaces(
     sideDetected: side.detected,
     frontPoints: slim(front.points),
     sidePoints: slim(side.points),
+    frontKeys: front.keys,
+    sideKeys: side.keys,
   };
+}
+
+async function measureFull(dataUrl: string, view: "front" | "side"): Promise<FaceGeometry & { keys: Record<string, Point> }> {
+  try {
+    const [landmarker, img] = await Promise.all([getFaceLandmarker(), loadImage(dataUrl)]);
+    const res = landmarker.detect(img);
+    const lm = res.faceLandmarks?.[0] as unknown as { x: number; y: number }[] | undefined;
+    if (!lm || lm.length < 468) return { detected: false, measurements: [], keys: {} };
+    const pts: Point[] = lm.map((l: { x: number; y: number }) => ({ x: l.x * img.naturalWidth, y: l.y * img.naturalHeight }));
+    return {
+      detected: true,
+      measurements: view === "front" ? frontMeasurements(pts) : sideMeasurements(pts),
+      points: lm.map((l: { x: number; y: number }) => ({ x: l.x, y: l.y })),
+      keys: keyPoints(lm),
+    };
+  } catch (err) {
+    console.error("Landmark detection failed", err);
+    return { detected: false, measurements: [], keys: {} };
+  }
 }
