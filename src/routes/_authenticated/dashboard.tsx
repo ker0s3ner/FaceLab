@@ -630,6 +630,7 @@ function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightI
       {active && (
         <div className="absolute left-3 top-12 max-w-[70%] rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white dark:bg-white dark:text-zinc-900 shadow">
           {active.name} — {active.raw_measurement}
+          {!(keys && Object.keys(keys).length > 0) && <span className="opacity-70"> · ≈ estimated</span>}
           <div className="mt-1 h-0.5 w-full bg-emerald-400" />
         </div>
       )}

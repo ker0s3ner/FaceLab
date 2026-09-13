@@ -126,6 +126,69 @@ export const RULER_DEFS: Record<string, string[]> = {
   default: ["foreheadTop", "browGlabella", "subnasale", "chin"],
 };
 
+// Estimated anatomy (normalized 0–1) used when the mesh didn't detect
+// (common on side profiles). Real detected keys always override these,
+// so overlays draw true-to-type instead of collapsing to a box or nothing.
+const EST_FRONT: Record<string, { x: number; y: number }> = {
+  foreheadTop: { x: 0.5, y: 0.08 },
+  browGlabella: { x: 0.5, y: 0.24 },
+  glabella: { x: 0.5, y: 0.27 },
+  nasion: { x: 0.5, y: 0.33 },
+  noseTip: { x: 0.5, y: 0.47 },
+  subnasale: { x: 0.5, y: 0.55 },
+  upperLip: { x: 0.5, y: 0.63 },
+  lowerLip: { x: 0.5, y: 0.68 },
+  chin: { x: 0.5, y: 0.8 },
+  eyeOuterR: { x: 0.33, y: 0.38 },
+  eyeInnerR: { x: 0.43, y: 0.38 },
+  eyeInnerL: { x: 0.57, y: 0.38 },
+  eyeOuterL: { x: 0.67, y: 0.38 },
+  irisR: { x: 0.38, y: 0.38 },
+  irisL: { x: 0.62, y: 0.38 },
+  browR: { x: 0.38, y: 0.31 },
+  browL: { x: 0.62, y: 0.31 },
+  alarR: { x: 0.44, y: 0.53 },
+  alarL: { x: 0.56, y: 0.53 },
+  cheekR: { x: 0.28, y: 0.52 },
+  cheekL: { x: 0.72, y: 0.52 },
+  gonionR: { x: 0.33, y: 0.68 },
+  gonionL: { x: 0.67, y: 0.68 },
+  mouthR: { x: 0.42, y: 0.64 },
+  mouthL: { x: 0.58, y: 0.64 },
+};
+
+const EST_SIDE: Record<string, { x: number; y: number }> = {
+  foreheadTop: { x: 0.55, y: 0.08 },
+  browGlabella: { x: 0.52, y: 0.24 },
+  glabella: { x: 0.5, y: 0.27 },
+  nasion: { x: 0.46, y: 0.34 },
+  noseTip: { x: 0.34, y: 0.47 },
+  subnasale: { x: 0.42, y: 0.55 },
+  upperLip: { x: 0.4, y: 0.62 },
+  lowerLip: { x: 0.42, y: 0.67 },
+  chin: { x: 0.44, y: 0.78 },
+  eyeOuterR: { x: 0.48, y: 0.38 },
+  eyeInnerR: { x: 0.47, y: 0.38 },
+  eyeInnerL: { x: 0.47, y: 0.38 },
+  eyeOuterL: { x: 0.46, y: 0.38 },
+  irisR: { x: 0.475, y: 0.38 },
+  irisL: { x: 0.47, y: 0.38 },
+  browR: { x: 0.5, y: 0.31 },
+  browL: { x: 0.49, y: 0.31 },
+  alarR: { x: 0.4, y: 0.52 },
+  alarL: { x: 0.41, y: 0.52 },
+  cheekR: { x: 0.55, y: 0.52 },
+  cheekL: { x: 0.56, y: 0.52 },
+  gonionR: { x: 0.52, y: 0.66 },
+  gonionL: { x: 0.53, y: 0.66 },
+  mouthR: { x: 0.4, y: 0.63 },
+  mouthL: { x: 0.41, y: 0.63 },
+};
+
+export function estimatedKeys(view: "front" | "side"): Record<string, { x: number; y: number }> {
+  return view === "side" ? EST_SIDE : EST_FRONT;
+}
+
 export function lineDefFor(name: string): { a: string; b: string; vertical?: boolean } | null {
   return LINE_DEFS[name] ?? null;
 }

@@ -2,6 +2,7 @@ import { regionBoxFor } from "@/lib/faceiq/types";
 import {
   angleDefFor,
   curveDefFor,
+  estimatedKeys,
   lineDefFor,
   overlayKindFor,
   rulerDefFor,
@@ -75,8 +76,11 @@ export function RatioOverlay({
   keys: Record<string, Pt>;
 }) {
   const kind = overlayKindFor(ratioName, pillar);
+  // Real detected keys win; estimated anatomy fills gaps (esp. side profiles
+  // where mesh detection often fails) so overlays always draw true-to-type.
+  const merged: Record<string, Pt> = { ...estimatedKeys(view), ...keys };
   const K = (n: string): Pt | null => {
-    const p = keys[n];
+    const p = merged[n];
     return p ? { x: p.x * 100, y: p.y * 100 } : null;
   };
 
