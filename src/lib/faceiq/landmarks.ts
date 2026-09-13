@@ -88,6 +88,7 @@ const I = {
   browGlabella: 8,
 } as const;
 
+const pt = (p: Point[], i: number): Point => p[i] as Point;
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function angleAt(a: Point, vertex: Point, c: Point) {
@@ -115,57 +116,59 @@ function frontMeasurements(p: Point[]): Measurement[] {
     });
   };
 
-  const faceWidth = dist(p[I.cheekR], p[I.cheekL]);
-  const faceHeight = dist(p[I.foreheadTop], p[I.chin]);
+  const faceWidth = dist(pt(p, I.cheekR), pt(p, I.cheekL));
+  const faceHeight = dist(pt(p, I.foreheadTop), pt(p, I.chin));
   push("Total Facial Width to Height Ratio", faceWidth / faceHeight, "ratio");
 
-  const ipd = dist(p[I.irisR] ?? p[I.eyeInnerR], p[I.irisL] ?? p[I.eyeInnerL]);
+  const irisR = p[I.irisR] ?? pt(p, I.eyeInnerR);
+  const irisL = p[I.irisL] ?? pt(p, I.eyeInnerL);
+  const ipd = dist(irisR, irisL);
   push("Eye Separation Ratio", (ipd / faceWidth) * 100, "percent");
 
-  const icd = dist(p[I.eyeInnerR], p[I.eyeInnerL]);
-  const eyeWidth = dist(p[I.eyeOuterR], p[I.eyeInnerR]);
+  const icd = dist(pt(p, I.eyeInnerR), pt(p, I.eyeInnerL));
+  const eyeWidth = dist(pt(p, I.eyeOuterR), pt(p, I.eyeInnerR));
   push("Inter-canthal to Eye Width Ratio", icd / eyeWidth, "ratio");
 
   // canthal tilt: inner -> outer canthus, positive = upward tilt
   const tiltR =
-    (Math.atan2(p[I.eyeInnerR].y - p[I.eyeOuterR].y, Math.abs(p[I.eyeOuterR].x - p[I.eyeInnerR].x)) *
+    (Math.atan2(pt(p, I.eyeInnerR).y - pt(p, I.eyeOuterR).y, Math.abs(pt(p, I.eyeOuterR).x - pt(p, I.eyeInnerR).x)) *
       180) /
     Math.PI;
   const tiltL =
-    (Math.atan2(p[I.eyeInnerL].y - p[I.eyeOuterL].y, Math.abs(p[I.eyeOuterL].x - p[I.eyeInnerL].x)) *
+    (Math.atan2(pt(p, I.eyeInnerL).y - pt(p, I.eyeOuterL).y, Math.abs(pt(p, I.eyeOuterL).x - pt(p, I.eyeInnerL).x)) *
       180) /
     Math.PI;
   push("Canthal Tilt", (tiltR + tiltL) / 2, "deg");
 
   // facial thirds
-  const upper = Math.abs(p[I.browGlabella].y - p[I.foreheadTop].y);
-  const middle = Math.abs(p[I.subnasale].y - p[I.browGlabella].y);
-  const lower = Math.abs(p[I.chin].y - p[I.subnasale].y);
+  const upper = Math.abs(pt(p, I.browGlabella).y - pt(p, I.foreheadTop).y);
+  const middle = Math.abs(pt(p, I.subnasale).y - pt(p, I.browGlabella).y);
+  const lower = Math.abs(pt(p, I.chin).y - pt(p, I.subnasale).y);
   const total = upper + middle + lower;
   push("Upper Third Proportion", (upper / total) * 100, "percent");
   push("Middle Third Proportion", (middle / total) * 100, "percent");
   push("Lower Third Proportion", (lower / total) * 100, "percent");
 
-  push("Bigonial to Bizygomatic Ratio", dist(p[I.gonionR], p[I.gonionL]) / faceWidth, "ratio");
-  push("Nose Width to Face Width Ratio", dist(p[I.alarR], p[I.alarL]) / faceWidth, "ratio");
-  push("Mouth Width to Nose Width Ratio", dist(p[I.mouthR], p[I.mouthL]) / dist(p[I.alarR], p[I.alarL]), "ratio");
+  push("Bigonial to Bizygomatic Ratio", dist(pt(p, I.gonionR), pt(p, I.gonionL)) / faceWidth, "ratio");
+  push("Nose Width to Face Width Ratio", dist(pt(p, I.alarR), pt(p, I.alarL)) / faceWidth, "ratio");
+  push("Mouth Width to Nose Width Ratio", dist(pt(p, I.mouthR), pt(p, I.mouthL)) / dist(pt(p, I.alarR), pt(p, I.alarL)), "ratio");
   push(
     "Philtrum to Chin Ratio",
-    Math.abs(p[I.upperLip].y - p[I.subnasale].y) / Math.abs(p[I.chin].y - p[I.lowerLip].y),
+    Math.abs(pt(p, I.upperLip).y - pt(p, I.subnasale).y) / Math.abs(pt(p, I.chin).y - pt(p, I.lowerLip).y),
     "ratio",
   );
-  push("Jaw Frontal Angle", angleAt(p[I.gonionR], p[I.chin], p[I.gonionL]), "deg");
+  push("Jaw Frontal Angle", angleAt(pt(p, I.gonionR), pt(p, I.chin), pt(p, I.gonionL)), "deg");
 
   // symmetry: horizontal offset of midline features vs. cheek midpoint
-  const midX = (p[I.cheekR].x + p[I.cheekL].x) / 2;
+  const midX = (pt(p, I.cheekR).x + pt(p, I.cheekL).x) / 2;
   const devs = [I.noseTip, I.subnasale, I.chin, I.glabella].map(
-    (i) => Math.abs(p[i].x - midX) / faceWidth,
+    (i) => Math.abs(pt(p, i).x - midX) / faceWidth,
   );
   push("Midline Symmetry Deviation", (devs.reduce((a, b) => a + b, 0) / devs.length) * 100, "percent");
 
   push(
     "Brow to Eye Distance Ratio",
-    ((Math.abs(p[I.browR].y - p[I.eyeOuterR].y) + Math.abs(p[I.browL].y - p[I.eyeOuterL].y)) / 2) /
+    ((Math.abs(pt(p, I.browR).y - pt(p, I.eyeOuterR).y) + Math.abs(pt(p, I.browL).y - pt(p, I.eyeOuterL).y)) / 2) /
       eyeWidth,
     "ratio",
   );
@@ -186,19 +189,19 @@ function sideMeasurements(p: Point[]): Measurement[] {
     });
   };
 
-  push("Facial Convexity / Glabella Angle", angleAt(p[I.glabella], p[I.subnasale], p[I.chin]), "deg");
-  push("Nasofrontal Angle", angleAt(p[I.glabella], p[I.nasion], p[I.noseTip]), "deg");
-  push("Nasolabial Angle", angleAt(p[I.noseTip], p[I.subnasale], p[I.upperLip]), "deg");
-  push("Mentolabial / Z Angle", angleAt(p[I.noseTip], p[I.chin], p[I.glabella]), "deg");
+  push("Facial Convexity / Glabella Angle", angleAt(pt(p, I.glabella), pt(p, I.subnasale), pt(p, I.chin)), "deg");
+  push("Nasofrontal Angle", angleAt(pt(p, I.glabella), pt(p, I.nasion), pt(p, I.noseTip)), "deg");
+  push("Nasolabial Angle", angleAt(pt(p, I.noseTip), pt(p, I.subnasale), pt(p, I.upperLip)), "deg");
+  push("Mentolabial / Z Angle", angleAt(pt(p, I.noseTip), pt(p, I.chin), pt(p, I.glabella)), "deg");
 
-  const nasalHeight = dist(p[I.nasion], p[I.subnasale]);
-  push("Nasal Projection", dist(p[I.subnasale], p[I.noseTip]) / nasalHeight, "ratio");
-  push("Nasal Width to Height Ratio", dist(p[I.alarR], p[I.alarL]) / nasalHeight, "ratio");
+  const nasalHeight = dist(pt(p, I.nasion), pt(p, I.subnasale));
+  push("Nasal Projection", dist(pt(p, I.subnasale), pt(p, I.noseTip)) / nasalHeight, "ratio");
+  push("Nasal Width to Height Ratio", dist(pt(p, I.alarR), pt(p, I.alarL)) / nasalHeight, "ratio");
 
-  const faceHeight = dist(p[I.foreheadTop], p[I.chin]);
-  push("Chin Projection (to facial plane)", Math.abs(p[I.chin].x - p[I.upperLip].x) / faceHeight, "ratio");
-  push("Ramus to Mandible Ratio", dist(p[I.gonionL], p[I.cheekL]) / dist(p[I.gonionL], p[I.chin]), "ratio");
-  push("Browridge Inclination Angle", angleAt(p[I.foreheadTop], p[I.glabella], p[I.noseTip]), "deg");
+  const faceHeight = dist(pt(p, I.foreheadTop), pt(p, I.chin));
+  push("Chin Projection (to facial plane)", Math.abs(pt(p, I.chin).x - pt(p, I.upperLip).x) / faceHeight, "ratio");
+  push("Ramus to Mandible Ratio", dist(pt(p, I.gonionL), pt(p, I.cheekL)) / dist(pt(p, I.gonionL), pt(p, I.chin)), "ratio");
+  push("Browridge Inclination Angle", angleAt(pt(p, I.foreheadTop), pt(p, I.glabella), pt(p, I.noseTip)), "deg");
 
   return out;
 }
@@ -207,15 +210,15 @@ async function measure(dataUrl: string, view: "front" | "side"): Promise<FaceGeo
   try {
     const [landmarker, img] = await Promise.all([getFaceLandmarker(), loadImage(dataUrl)]);
     const res = landmarker.detect(img);
-    const lm = res.faceLandmarks?.[0];
+    const lm = res.faceLandmarks?.[0] as unknown as { x: number; y: number }[] | undefined;
     if (!lm || lm.length < 468) return { detected: false, measurements: [] };
 
     // scale to pixel space so aspect ratio doesn't distort ratios/angles
-    const pts: Point[] = lm.map((l) => ({ x: l.x * img.naturalWidth, y: l.y * img.naturalHeight }));
+    const pts: Point[] = lm.map((l: { x: number; y: number }) => ({ x: l.x * img.naturalWidth, y: l.y * img.naturalHeight }));
     return {
       detected: true,
       measurements: view === "front" ? frontMeasurements(pts) : sideMeasurements(pts),
-      points: lm.map((l) => ({ x: l.x, y: l.y })),
+      points: lm.map((l: { x: number; y: number }) => ({ x: l.x, y: l.y })),
     };
   } catch (err) {
     console.error("Landmark detection failed", err);

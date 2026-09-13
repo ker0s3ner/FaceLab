@@ -1243,6 +1243,7 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
   const [frontImage, setFrontImage] = useState<string | null>(null);
   const [sideImage, setSideImage] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [statusText, setStatusText] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const canAnalyze = Boolean(frontImage && sideImage) && !isAnalyzing;
@@ -1250,11 +1251,19 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
     if (!frontImage || !sideImage) return;
     setIsAnalyzing(true); setError(null); setResult(null);
     try {
-      const data = await runAnalysis({ data: { frontImage, sideImage } });
+      setStatusText("Detecting 478 facial landmarks…");
+      let measurements: { front: { name: string; value: number; unit: "ratio" | "deg" | "percent"; raw: string }[]; side: { name: string; value: number; unit: "ratio" | "deg" | "percent"; raw: string }[] } | undefined;
+      try {
+        const { measureFaces } = await import("@/lib/faceiq/landmarks");
+        const m = await measureFaces(frontImage, sideImage);
+        if (m.frontDetected || m.sideDetected) measurements = { front: m.front, side: m.side };
+      } catch {}
+      setStatusText("Scoring with AI (grounded in measurements)…");
+      const data = await runAnalysis({ data: { frontImage, sideImage, measurements } });
       setResult(data);
       // auto-save for user request: automatically save photos
       onSave(frontImage, sideImage, data);
-    } catch (err) { setError(err instanceof Error ? err.message : "Failed"); } finally { setIsAnalyzing(false); }
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed"); } finally { setIsAnalyzing(false); setStatusText(null); }
   };
   const reset = () => { setFrontImage(null); setSideImage(null); setResult(null); setError(null); };
   const handleSave = () => { if (!frontImage || !sideImage || !result) return; onSave(frontImage, sideImage, result); reset(); };
@@ -1276,7 +1285,7 @@ function AnalyzerWithSave({ onSave }: { onSave: (front: string, side: string, re
                 {error && <div className="mt-4 rounded-lg bg-destructive/10 p-4 text-center text-sm text-destructive">{error}</div>}
                 <div className="mt-6 flex flex-col gap-4">
                   <Button size="lg" onClick={analyzePhotos} disabled={!canAnalyze} className="w-full gap-2 text-base">
-                    {isAnalyzing ? <><Loader2 className="h-5 w-5 animate-spin" /> Analyzing...</> : <><Sparkles className="h-5 w-5" /> Analyze My Face</>}
+                    {isAnalyzing ? <><Loader2 className="h-5 w-5 animate-spin" /> {statusText ?? "Analyzing..."}</> : <><Sparkles className="h-5 w-5" /> Analyze My Face</>}
                   </Button>
                   <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground"><Shield className="h-3.5 w-3.5" /> Photos deleted after <Trash2 className="h-3.5 w-3.5" /></div>
                 </div>

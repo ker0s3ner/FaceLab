@@ -1,9 +1,22 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+const measurementSchema = z.object({
+  name: z.string(),
+  value: z.number(),
+  unit: z.enum(["ratio", "deg", "percent"]),
+  raw: z.string(),
+});
+
 const inputSchema = z.object({
   frontImage: z.string().min(1),
   sideImage: z.string().min(1),
+  measurements: z
+    .object({
+      front: z.array(measurementSchema),
+      side: z.array(measurementSchema),
+    })
+    .optional(),
 });
 
 export interface AnalysisResult {
@@ -69,6 +82,13 @@ export const analyzeFace = createServerFn({ method: "POST" })
     const apiKey = process.env["LOVABLE_API_KEY"];
     if (!apiKey) throw new Error("AI is not configured");
 
+    // Ground scoring in real geometry if measurements were supplied
+    const measurementBlock = data.measurements
+      ? `\n\nMeasured anthropometry (from 478-point MediaPipe Face Mesh, pixel-scaled — use these numbers to ground your scores, do not ignore):\nFRONT: ${data.measurements.front.map((m) => `${m.name}=${m.raw} (${m.value}${m.unit})`).join("; ")}\nSIDE: ${data.measurements.side.map((m) => `${m.name}=${m.raw} (${m.value}${m.unit})`).join("; ")}\nIncorporate these into pillar ratios where names match; if a ratio has no direct measurement, estimate visually.\n`
+      : "";
+
+    const groundedPrompt = PROMPT + measurementBlock;
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -81,7 +101,7 @@ export const analyzeFace = createServerFn({ method: "POST" })
           {
             role: "user",
             content: [
-              { type: "text", text: PROMPT },
+              { type: "text", text: groundedPrompt },
               { type: "image_url", image_url: { url: data.frontImage } },
               { type: "image_url", image_url: { url: data.sideImage } },
             ],
