@@ -83,12 +83,15 @@ export interface SimulationSession {
   ratios_moved: { ratio_name: string; before: string; after: string; tag: string }[];
 }
 
+export type SkinType = "oily" | "dry" | "combination" | "sensitive";
+
 export type FaceIQState = {
   analyses: Analysis[];
   selectedId: string | null;
   planActions: PlanAction[];
   gender: string;
   ethnicity: string;
+  skinType: SkinType;
 };
 
 // Helpers

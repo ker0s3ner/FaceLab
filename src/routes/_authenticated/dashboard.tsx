@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useFaceIQStore } from "@/lib/faceiq/store";
 import { DashboardShell, type DashboardTab } from "@/components/dashboard-shell";
@@ -14,9 +14,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { analyzeFace, type AnalysisResult } from "@/lib/analyze.functions";
 import { regionBoxFor, type PillarName } from "@/lib/faceiq/types";
 import { flawStatesFor } from "@/lib/faceiq/flaws";
+import { habitsFor, treatmentsForAnalysis } from "@/lib/faceiq/autoplan";
 import { TREATMENTS } from "@/lib/faceiq/treatments";
 import { RatioOverlay } from "@/components/ratio-overlay";
 import { RatioRow } from "@/components/ratio-row";
+import { SafeImg } from "@/components/safe-img";
 import { FlawAccordion } from "@/components/flaw-accordion";
 import { RatioModal, type RatioModalContext } from "@/components/ratio-modal";
 
@@ -42,7 +44,7 @@ function Dashboard() {
   const { user } = Route.useRouteContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { state, addAnalysis, select, clearAll, cloudStatus, overrideRatio } = useFaceIQStore();
+  const { state, addAnalysis, select, clearAll, cloudStatus, cloudError, pending, syncNow, overrideRatio } = useFaceIQStore();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [analysisPillar, setAnalysisPillar] = useState<string>("Harmony");
   const [showNewScan, setShowNewScan] = useState(false);
@@ -117,6 +119,9 @@ function Dashboard() {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       cloudStatus={cloudStatus}
+      cloudError={cloudError}
+      pending={pending}
+      onSync={() => syncNow()}
     >
 
       {showNewScan && (
@@ -219,91 +224,98 @@ function percentileFor(score: number) {
 function BellCurve({ score, history = [], label = "You", potential, target }: { score: number; history?: number[]; label?: string; potential?: number; target?: number }) {
   const mean = 5.0;
   const sigma = 1.6;
+  // taller canvas so the improvement band is easy to see
+  const VB_W = 200;
+  const VB_H = 96;
+  const BASE = 82;
+  const PEAK = 40;
   const xForScore = (s: number) => 10 + (Math.max(0, Math.min(10, s)) / 10) * 180;
   const gauss = (s: number) => Math.exp(-Math.pow(s - mean, 2) / (2 * sigma * sigma));
   const maxG = gauss(mean);
+  const yFor = (s: number) => BASE - (gauss(s) / maxG) * PEAK;
   const pts: string[] = [];
   for (let s = 0; s <= 10; s += 0.2) {
     const x = xForScore(s);
-    const y = 50 - (gauss(s) / maxG) * 36;
-    pts.push(`${x.toFixed(1)} ${y.toFixed(1)}`);
+    pts.push(`${x.toFixed(1)} ${yFor(s).toFixed(1)}`);
   }
   const d = `M ${pts[0]} ` + pts.slice(1).map((p) => `L ${p}`).join(" ");
-  const [hover, setHover] = useState<number | null>(null);
-  const shown = hover ?? score;
-  const markerX = xForScore(shown);
-  const markerY = 50 - (gauss(shown) / maxG) * 36;
-  const percentile = percentileFor(shown);
+  // Hover only inspects — the user marker never moves.
+  const [inspect, setInspect] = useState<number | null>(null);
+  const markerX = xForScore(score);
+  const markerY = yFor(score);
+  const percentile = percentileFor(score);
   const gradId = `bellGrad-${label.replace(/\W/g, "")}`;
+  const pot = potential !== undefined ? Math.min(10, potential) : null;
+  const tgt = target !== undefined ? Math.min(10, target) : null;
   const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
     const fx = (e.clientX - rect.left) / rect.width; // 0-1 in viewBox terms
     const s = ((fx * 200 - 10) / 180) * 10;
-    setHover(Math.max(0, Math.min(10, s)));
+    setInspect(Math.max(0, Math.min(10, s)));
   };
   return (
     <div className="relative w-full">
-      <svg viewBox="0 0 200 60" className="h-24 w-full cursor-crosshair" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} className="h-40 w-full cursor-crosshair" onMouseMove={onMove} onMouseLeave={() => setInspect(null)}>
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#18181b" stopOpacity="0.10" />
             <stop offset="100%" stopColor="#18181b" stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path d={`${d} L 190 50 L 10 50 Z`} fill={`url(#${gradId})`} stroke="none" />
+        <path d={`${d} L 190 ${BASE} L 10 ${BASE} Z`} fill={`url(#${gradId})`} stroke="none" />
         <path d={d} fill="none" stroke="#a1a1aa" strokeWidth="1.2" />
-        {/* improvement range: current → potential */}
-        {potential !== undefined && potential > shown && (
+        {/* improvement range: current → potential (always visible, generous) */}
+        {pot !== null && pot > score && (
           <g>
             <rect
-              x={xForScore(shown)}
-              y={8}
-              width={Math.max(2, xForScore(Math.min(10, potential)) - xForScore(shown))}
-              height={42}
+              x={markerX}
+              y={10}
+              width={Math.max(3, xForScore(pot) - markerX)}
+              height={BASE - 10}
               fill="#10b981"
-              opacity="0.14"
-              rx="2"
+              opacity="0.18"
+              rx="3"
             />
-            <line
-              x1={xForScore(Math.min(10, potential))}
-              y1={50 - (gauss(Math.min(10, potential)) / maxG) * 36}
-              x2={xForScore(Math.min(10, potential))}
-              y2="50"
-              stroke="#10b981"
-              strokeWidth="1.5"
-            />
-            <circle
-              cx={xForScore(Math.min(10, potential))}
-              cy={50 - (gauss(Math.min(10, potential)) / maxG) * 36}
-              r="3.5"
-              fill="#10b981"
-              stroke="white"
-              strokeWidth="1.2"
-            />
-            <text x={xForScore(Math.min(10, potential))} y="8" fontSize="5" textAnchor="middle" fill="#059669" fontWeight="bold">
-              {potential.toFixed(1)}
+            {tgt !== null && tgt > score && tgt < pot && (
+              <line x1={xForScore(tgt)} y1={yFor(tgt)} x2={xForScore(tgt)} y2={BASE} stroke="#0d9488" strokeWidth={1.4} strokeDasharray="4 2" />
+            )}
+            <line x1={xForScore(pot)} y1={yFor(pot)} x2={xForScore(pot)} y2={BASE} stroke="#10b981" strokeWidth={1.8} />
+            <circle cx={xForScore(pot)} cy={yFor(pot)} r="4" fill="#10b981" stroke="white" strokeWidth={1.4} />
+            <text x={Math.min(188, Math.max(12, xForScore(pot)))} y={14} fontSize={6} textAnchor="middle" fill="#059669" fontWeight="bold">
+              {pot.toFixed(1)}
             </text>
           </g>
         )}
         {/* history dots */}
         {history.map((h, i) => {
           const hx = xForScore(h);
-          const hy = 50 - (gauss(h) / maxG) * 36;
+          const hy = yFor(h);
           return <circle key={i} cx={hx} cy={hy} r="2" fill="none" stroke="#71717a" strokeWidth="1" opacity="0.7" />;
         })}
-        <line x1={markerX} y1={markerY} x2={markerX} y2="50" stroke="#18181b" strokeWidth="1.5" />
-        <circle cx={markerX} cy={markerY} r="4.5" fill="#18181b" stroke="white" strokeWidth="1.5" />
-        <text x={markerX} y="8" fontSize="5.5" textAnchor="middle" fill="#18181b" fontWeight="bold">{shown.toFixed(1)}</text>
+        {/* user marker — fixed, never follows the cursor */}
+        <line x1={markerX} y1={markerY} x2={markerX} y2={BASE} stroke="#18181b" strokeWidth={1.8} />
+        <circle cx={markerX} cy={markerY} r="5" fill="#18181b" stroke="white" strokeWidth={1.6} />
+        <text x={Math.min(188, Math.max(12, markerX))} y={14} fontSize={6.5} textAnchor="middle" fill="#18181b" fontWeight="bold">{score.toFixed(1)}</text>
+        {/* hover inspect readout — separate thin marker + tooltip */}
+        {inspect !== null && (
+          <g pointerEvents="none">
+            <line x1={xForScore(inspect)} y1={yFor(inspect)} x2={xForScore(inspect)} y2={BASE} stroke="#0d9488" strokeWidth={1} strokeDasharray="2 2" opacity={0.8} />
+            <rect x={Math.min(150, Math.max(8, xForScore(inspect) - 24))} y={yFor(inspect) - 22} width={48} height={13} rx={6} fill="#0f766e" opacity={0.92} />
+            <text x={Math.min(150, Math.max(8, xForScore(inspect) - 24)) + 24} y={yFor(inspect) - 12.5} fontSize={7} textAnchor="middle" fill="#fff" fontWeight="bold">
+              {inspect.toFixed(1)}
+            </text>
+          </g>
+        )}
       </svg>
       <p className="text-center text-[10px] tracking-widest uppercase text-zinc-400">
-        {hover !== null
-          ? `Inspecting ${hover.toFixed(1)} — ${percentile}`
-          : potential !== undefined
-            ? `● ${shown.toFixed(1)} now → ${potential.toFixed(1)} potential — ${label}`
+        {inspect !== null
+          ? `Inspecting ${inspect.toFixed(1)} — ${percentileFor(inspect)}`
+          : pot !== null
+            ? `● ${score.toFixed(1)} now → ${pot.toFixed(1)} potential — ${label}`
             : `Population — ${percentile} — ${label} are here`}
       </p>
       <div className="mt-1 flex justify-between text-[8px] tabular-nums text-zinc-400"><span>0</span><span>2.5</span><span>5</span><span>7.5</span><span>10</span></div>
-      {history.length > 0 && <p className="mt-1 text-center text-[10px] text-zinc-400">○ {history.length} past scan{history.length > 1 ? "s" : ""} plotted — hover to inspect</p>}
+      {history.length > 0 && <p className="mt-1 text-center text-[10px] text-zinc-400">○ {history.length} past scan{history.length > 1 ? "s" : ""} plotted — hover to inspect (marker stays put)</p>}
     </div>
   );
 }
@@ -413,11 +425,11 @@ function OverviewTab({ selected, onViewPillar, earliest, onOpenRatio }: { select
 
         <div className="mt-6 grid sm:grid-cols-[1fr_1fr_1.2fr] gap-4 items-stretch">
           <button onClick={() => setCurveView("front")} className={`rounded-xl border overflow-hidden flex flex-col text-left transition-colors ${curveView === "front" ? "border-zinc-900 ring-1 ring-zinc-900 dark:border-white dark:ring-white" : "dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40"}`}>
-            <div className="flex-1 aspect-[3/4] overflow-hidden bg-zinc-100"><img src={selected.front_photo} alt="front" className="h-full w-full object-cover" /></div>
+            <div className="flex-1 aspect-[3/4] overflow-hidden bg-zinc-100"><SafeImg src={selected.front_photo} alt="front" className="h-full w-full object-cover" label="No photo" /></div>
             <div className="p-2 flex justify-between text-xs border-t dark:border-zinc-800"><span>Front{curveView === "front" ? " ●" : ""}</span><span className="font-medium tabular-nums">{overall.front_score.toFixed(1)}</span></div>
           </button>
           <button onClick={() => setCurveView("side")} className={`rounded-xl border overflow-hidden flex flex-col text-left transition-colors ${curveView === "side" ? "border-zinc-900 ring-1 ring-zinc-900 dark:border-white dark:ring-white" : "dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/40"}`}>
-            <div className="flex-1 aspect-[3/4] overflow-hidden bg-zinc-100"><img src={selected.side_photo} alt="side" className="h-full w-full object-cover" /></div>
+            <div className="flex-1 aspect-[3/4] overflow-hidden bg-zinc-100"><SafeImg src={selected.side_photo} alt="side" className="h-full w-full object-cover" label="No photo" /></div>
             <div className="p-2 flex justify-between text-xs border-t dark:border-zinc-800"><span>Side{curveView === "side" ? " ●" : ""}</span><span className="rounded bg-zinc-900 px-2 py-0.5 text-white dark:bg-white dark:text-zinc-900 tabular-nums">{overall.side_score.toFixed(1)} · {overall.percentile}</span></div>
           </button>
           <div className="rounded-xl border p-3 dark:border-zinc-800 flex flex-col">
@@ -563,7 +575,14 @@ function OverviewTab({ selected, onViewPillar, earliest, onOpenRatio }: { select
               <option>White / Caucasian</option><option>Asian</option><option>Black</option><option>Hispanic</option><option>Other</option>
             </select>
           </label>
+          <label className="flex-1 rounded-xl border p-3 dark:border-zinc-800">
+            <span className="text-xs tracking-widest uppercase text-zinc-400">Skin type</span>
+            <select value={state.skinType} onChange={(e) => setState((s) => ({ ...s, skinType: e.target.value as any }))} className="mt-1 w-full bg-transparent text-sm font-medium">
+              <option value="oily">Oily</option><option value="dry">Dry</option><option value="combination">Combination</option><option value="sensitive">Sensitive</option>
+            </select>
+          </label>
         </div>
+        <p className="mt-2 text-xs text-zinc-400">Skin type personalizes the skincare tips in your auto-generated plan.</p>
       </Card>
     </div>
   );
@@ -590,7 +609,7 @@ function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightI
   };
   return (
     <div className="relative">
-      <img src={src} alt={`${pillar} ${view}`} className="aspect-[3/4] w-full object-cover bg-zinc-100" />
+      <SafeImg src={src} alt={`${pillar} ${view}`} className="aspect-[3/4] w-full object-cover bg-zinc-100" />
       {/* real mesh dots */}
       {meshOn && shown.length > 0 && (
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full pointer-events-none">
@@ -897,6 +916,22 @@ function PlanTab({ selected }: { selected?: any }) {
           <span className="ml-1 text-zinc-400">ⓘ</span>
           <span className="ml-auto rounded-full bg-zinc-100 px-2.5 py-1 text-xs dark:bg-zinc-800">{state.planActions.length} actions selected</span>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            onClick={() => {
+              if (!active) return;
+              const existing = state.planActions.map((a) => a.treatment);
+              const picks = treatmentsForAnalysis(active, existing, 6);
+              picks.forEach((t) => addPlanAction(t));
+              setPicker(false);
+            }}
+            className="rounded-full"
+            disabled={!active}
+          >
+            ✨ Generate my plan to target
+          </Button>
+          <p className="text-xs text-zinc-500">Picks the highest-impact treatments for your worst flaws.</p>
+        </div>
         <div className="mt-3 flex gap-2 overflow-x-auto">
           {["Overall", "Harmony", "Angularity", "Dimorphism", "Features"].map((n) => (
             <button key={n} onClick={() => setPlanTab(n)} className={`rounded-full px-3 py-1 text-xs whitespace-nowrap ${planTab === n ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" : "border dark:border-zinc-700"}`}>{n}</button>
@@ -912,8 +947,8 @@ function PlanTab({ selected }: { selected?: any }) {
         {active && (
           <div className="mt-4 grid sm:grid-cols-[auto_1fr] gap-4 items-start">
             <div className="flex gap-2">
-              <img src={active.front_photo} alt="front" className="h-20 w-16 rounded-lg object-cover" />
-              <img src={active.side_photo} alt="side" className="h-20 w-16 rounded-lg object-cover" />
+              <SafeImg src={active.front_photo} alt="front" className="h-20 w-16 rounded-lg object-cover" label="No photo" />
+              <SafeImg src={active.side_photo} alt="side" className="h-20 w-16 rounded-lg object-cover" label="No photo" />
             </div>
             <div className="rounded-xl border p-3 dark:border-zinc-800">
               <div className="flex gap-2 text-[10px] tracking-widest uppercase text-zinc-400">
@@ -1017,6 +1052,29 @@ function PlanTab({ selected }: { selected?: any }) {
         </div>
       </Card>
 
+      {/* Daily habits auto-generated from your analysis + skin type */}
+      {active && (
+        <Card className="p-6">
+          <div className="flex items-center gap-2">
+            <span>☀</span>
+            <h4 className="font-medium">Daily habits for your target</h4>
+            <span className="ml-auto rounded-full bg-zinc-100 px-2.5 py-1 text-xs capitalize dark:bg-zinc-800">{state.skinType} skin</span>
+          </div>
+          <ul className="mt-4 space-y-2.5">
+            {habitsFor(active, state.skinType).map((h) => (
+              <li key={h.title} className="flex items-start gap-3 rounded-xl border px-3 py-2.5 dark:border-zinc-800">
+                <span className={`mt-0.5 shrink-0 rounded px-2 py-0.5 text-[11px] font-medium ${h.tag === "Skincare" ? "bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300" : h.tag === "Hair" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" : "bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"}`}>{h.tag}</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{h.title}</p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">{h.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[11px] text-zinc-400">Educational only — not medical advice. Prescription options (tretinoin, minoxidil, etc.) need a dermatologist. Steroids are never recommended here.</p>
+        </Card>
+      )}
+
       {/* 4-icon explainer §6.4 keep */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -1052,9 +1110,91 @@ const SIM_REGIONS: { name: string; params: { name: string; desc: string; default
 
 type Movement = { id: string; region: string; param: string; value: number };
 
+function MorphViewer({ photo, treatment, adv, vert, mix, onAdv, onVert, onMix }: {
+  photo: string;
+  treatment: string;
+  adv: number;
+  vert: number;
+  mix: number;
+  onAdv: (v: number) => void;
+  onVert: (v: number) => void;
+  onMix: (v: number) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [rendering, setRendering] = useState(false);
+  const [holdOrig, setHoldOrig] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!photo) return;
+    setRendering(true);
+    const t = setTimeout(async () => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        if (!cancelled) setRendering(false);
+        return;
+      }
+      try {
+        const { renderWarp, specForTreatment } = await import("@/lib/faceiq/morph");
+        await renderWarp(canvas, photo, specForTreatment(treatment, adv, vert, mix));
+      } catch {}
+      if (!cancelled) setRendering(false);
+    }, 140);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [photo, treatment, adv, vert, mix]);
+
+  return (
+    <div className="p-4">
+      <div className="relative overflow-hidden rounded-xl bg-zinc-100 dark:bg-zinc-800">
+        {photo ? (
+          <>
+            <img src={photo} alt="before" className={`w-full object-cover ${holdOrig ? "" : "hidden"}`} />
+            <canvas ref={canvasRef} className={`w-full ${holdOrig ? "hidden" : ""}`} />
+          </>
+        ) : (
+          <div className="flex aspect-[3/4] w-full items-center justify-center text-xs text-zinc-400">No photo — rescan</div>
+        )}
+        <span className="absolute left-2 top-2 rounded bg-black/70 px-2 py-1 text-xs text-white">BEFORE</span>
+        <span className="absolute right-2 top-2 rounded bg-emerald-600 px-2 py-1 text-xs text-white">AFTER</span>
+        {rendering && (
+          <span className="absolute bottom-2 left-2 rounded bg-black/70 px-2 py-1 text-xs text-white">Rendering…</span>
+        )}
+      </div>
+      <button
+        onPointerDown={() => setHoldOrig(true)}
+        onPointerUp={() => setHoldOrig(false)}
+        onPointerLeave={() => setHoldOrig(false)}
+        className="mt-3 w-full rounded-full border px-4 py-2 text-xs font-medium select-none dark:border-zinc-700"
+      >
+        Hold to compare with before
+      </button>
+      <div className="mt-4 space-y-3">
+        <div>
+          <div className="flex justify-between text-xs"><span className="font-medium">Advancement</span><span className="tabular-nums">{adv > 0 ? "+" : ""}{adv.toFixed(1)}mm</span></div>
+          <input type="range" min={-10} max={10} step={0.5} value={adv} onChange={(e) => onAdv(Number(e.target.value))} className="mt-1 w-full accent-zinc-900" />
+        </div>
+        <div>
+          <div className="flex justify-between text-xs"><span className="font-medium">Vertical</span><span className="tabular-nums">{vert > 0 ? "+" : ""}{vert.toFixed(1)}mm</span></div>
+          <input type="range" min={-5} max={5} step={0.5} value={vert} onChange={(e) => onVert(Number(e.target.value))} className="mt-1 w-full accent-zinc-900" />
+        </div>
+        <div>
+          <div className="flex justify-between text-xs"><span className="font-medium">Morph strength</span><span className="tabular-nums">{mix}%</span></div>
+          <input type="range" min={0} max={100} step={5} value={mix} onChange={(e) => onMix(Number(e.target.value))} className="mt-1 w-full accent-zinc-900" />
+        </div>
+      </div>
+      <p className="mt-3 text-[11px] leading-snug text-zinc-400">Approximate 2D preview from your photo — not a surgical prediction. Educational only.</p>
+    </div>
+  );
+}
+
 function SimulateTab({ selected }: { selected: any }) {
   const [choice, setChoice] = useState("Genioplasty");
-  const [sliderPos, setSliderPos] = useState(50);
+  const [adv, setAdv] = useState(8);
+  const [vert, setVert] = useState(1);
+  const [mix, setMix] = useState(80);
   const [playPos, setPlayPos] = useState(0);
   const [movements, setMovements] = useState<Movement[]>([
     { id: "1", region: "Chin", param: "Advancement", value: 8.0 },
@@ -1065,7 +1205,33 @@ function SimulateTab({ selected }: { selected: any }) {
   const [ratioFilter, setRatioFilter] = useState<"Lowest" | "Highest" | "Improved" | "Declined">("Improved");
 
   const t = TREATMENTS.find((x) => x.name === choice) ?? TREATMENTS[1]!;
-  const afterScore = Math.min(10, selected.overall_score + t.score_delta + movements.reduce((s, m) => s + m.value * 0.02, 0) * 0.1);
+  useEffect(() => {
+    // sensible mm defaults per treatment family when switching
+    const n = t.name.toLowerCase();
+    if (/genioplasty|chin|jaw advancement|bsso|bimax|trimax/.test(n)) {
+      setAdv(8);
+      setVert(1);
+    } else if (/rhinoplasty|nasal|nose/.test(n)) {
+      setAdv(3);
+      setVert(0);
+    } else if (/cheek|midface|thread/.test(n)) {
+      setAdv(4);
+      setVert(0);
+    } else if (/brow|eyelid|cantho/.test(n)) {
+      setAdv(0);
+      setVert(-2);
+    } else {
+      setAdv(4);
+      setVert(0);
+    }
+  }, [choice]);
+  const afterScore = Math.min(
+    10,
+    selected.overall_score +
+      t.score_delta * (0.5 + mix / 200) +
+      (adv * 0.02 + vert * 0.015) * (mix / 100) +
+      movements.reduce((s, m) => s + m.value * 0.02, 0) * 0.05,
+  );
   const sideAfter = Math.min(10, (selected.pillars.find((x: any) => x.name === "Features")?.side_score ?? 5) + t.score_delta * 0.6);
 
   // Live ratiosMoved: worst ratios from the actual analysis improve toward ideal
@@ -1099,21 +1265,10 @@ function SimulateTab({ selected }: { selected: any }) {
         <button onClick={() => setChoice("Cheek Filler")} className={`rounded-full px-4 py-2 text-sm ${choice === "Cheek Filler" ? "bg-zinc-900 text-white" : "border bg-white"}`}>Eye spacing (Front)</button>
       </div>
 
-      {/* Before/After viewer §7.3 */}
+      {/* Before/After viewer §7.3 — real canvas warp preview */}
       <Card className="p-0 overflow-hidden">
         <div className="grid lg:grid-cols-[1.7fr_0.9fr] gap-0">
-          <div className="relative aspect-[4/3] overflow-hidden bg-zinc-100">
-            <img src={selected.front_photo} alt="before" className="absolute inset-0 h-full w-full object-cover" />
-            <div className="absolute inset-0 overflow-hidden" style={{ width: `${sliderPos}%` }}>
-              <img src={selected.front_photo} alt="after" className="h-full w-full object-cover brightness-110 contrast-110" style={{ width: `${(100 / sliderPos) * 100}%`, maxWidth: "none" }} />
-            </div>
-            <span className="absolute left-2 top-2 rounded bg-black/70 px-2 py-1 text-xs text-white">BEFORE</span>
-            <span className="absolute right-2 top-2 rounded bg-black/70 px-2 py-1 text-xs text-white">AFTER</span>
-            <div className="absolute inset-y-0 w-0.5 bg-white shadow" style={{ left: `${sliderPos}%` }}>
-              <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow">↔</div>
-            </div>
-            <input type="range" min={5} max={95} value={sliderPos} onChange={(e) => setSliderPos(Number(e.target.value))} className="absolute inset-x-0 bottom-3 mx-auto w-[90%] accent-zinc-900" />
-          </div>
+          <MorphViewer photo={selected.front_photo} treatment={t.name} adv={adv} vert={vert} mix={mix} onAdv={setAdv} onVert={setVert} onMix={setMix} />
           <div className="p-4 space-y-4 border-l dark:border-zinc-800">
             <div>
               <p className="text-[11px] tracking-widest uppercase text-zinc-400">Treatment</p>
@@ -1121,12 +1276,14 @@ function SimulateTab({ selected }: { selected: any }) {
               <p className="text-xs text-zinc-500">{t.invasiveness_tag}</p>
             </div>
             <div className="space-y-2">
-              {movements.slice(0, 2).map((m) => (
-                <div key={m.id} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm dark:border-zinc-800">
-                  <span>{m.param}</span>
-                  <span className="tabular-nums font-medium">{m.value > 0 ? "+" : ""}{m.value.toFixed(1)}mm</span>
-                </div>
-              ))}
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm dark:border-zinc-800">
+                <span>Advancement</span>
+                <span className="tabular-nums font-medium">{adv > 0 ? "+" : ""}{adv.toFixed(1)}mm</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm dark:border-zinc-800">
+                <span>Vertical</span>
+                <span className="tabular-nums font-medium">{vert > 0 ? "+" : ""}{vert.toFixed(1)}mm</span>
+              </div>
             </div>
             <div className="rounded-xl bg-zinc-50 p-3 dark:bg-zinc-800/50">
               <p className="text-xs tracking-widest uppercase text-zinc-400">Harmony Score</p>

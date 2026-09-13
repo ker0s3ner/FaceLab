@@ -6,18 +6,24 @@ import {
   deleteAnalysis as cloudDelete,
   clearAnalyses as cloudClear,
   fetchCloud,
+  lastCloudError,
   mergeSnapshots,
+  pendingCount,
   pushAnalysis as cloudPush,
   pushUserState as cloudPushState,
+  resetCachedUser,
+  retryPending,
+  syncAll,
   type CloudStatus,
 } from "./cloud";
 import { severityForScore } from "./flaws";
+import { supabase } from "@/integrations/supabase/client";
 
 const KEY = "faceiq_state_v2";
 const LEGACY_KEY = "faceiq_scans";
 
 function load(): FaceIQState {
-  if (typeof window === "undefined") return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
+  if (typeof window === "undefined") return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian", skinType: "combination" };
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
@@ -39,8 +45,9 @@ function load(): FaceIQState {
           return null;
         })
         .filter((a): a is Analysis => a !== null);
+      const withSkin: FaceIQState = { ...parsed, analyses, skinType: parsed.skinType ?? "combination" };
       if (migrated) {
-        const next = { ...parsed, analyses };
+        const next = withSkin;
         // persist migrated (guarded — quota errors must never crash render)
         setTimeout(() => {
           try {
@@ -49,7 +56,7 @@ function load(): FaceIQState {
         }, 0);
         return next;
       }
-      return parsed;
+      return withSkin;
     }
     // migrate legacy faceiq_scans
     const legacy = localStorage.getItem(LEGACY_KEY);
@@ -65,21 +72,55 @@ function load(): FaceIQState {
         overall_score: s.result.overallScore,
         legacy_result: s.result,
       }));
-      return { analyses, selectedId: analyses[analyses.length - 1]?.id ?? null, planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
+      return { analyses, selectedId: analyses[analyses.length - 1]?.id ?? null, planActions: [], gender: "Male", ethnicity: "White / Caucasian", skinType: "combination" };
     }
   } catch {}
-  return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
+  return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian", skinType: "combination" };
 }
 
 export function useFaceIQStore() {
   const [state, setState] = useState<FaceIQState>(() => {
     // SSR-safe: initialize empty, hydrate from localStorage in effect to avoid hydration mismatch (blank screen)
-    if (typeof window === "undefined") return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
-    return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
+    if (typeof window === "undefined") return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian", skinType: "combination" };
+    return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian", skinType: "combination" };
   });
   const [hydrated, setHydrated] = useState(false);
   const [cloudStatus, setCloudStatus] = useState<CloudStatus>("local");
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const [pending, setPending] = useState(0);
   const cloudTried = useRef(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // Full pull-merge-push cycle. Local is never discarded: merge is a union.
+  const runSync = async () => {
+    setCloudStatus("syncing");
+    setCloudError(null);
+    const cloud = await fetchCloud();
+    if (!cloud) {
+      setCloudStatus("local");
+      setCloudError(lastCloudError());
+      return;
+    }
+    if (cloud.tablesMissing) {
+      setCloudStatus("local");
+      setCloudError("Cloud tables missing — run the migration SQL in Supabase.");
+      return;
+    }
+    const merged = mergeSnapshots(stateRef.current, cloud.snapshot);
+    setState(merged);
+    const res = await syncAll(merged);
+    setPending(pendingCount());
+    if (res.failed > 0) {
+      setCloudStatus("error");
+      setCloudError(res.error ?? lastCloudError());
+    } else {
+      setCloudStatus("synced");
+      setCloudError(null);
+    }
+  };
+  const runSyncRef = useRef(runSync);
+  runSyncRef.current = runSync;
 
   useEffect(() => {
     let cancelled = false;
@@ -87,28 +128,46 @@ export function useFaceIQStore() {
       const loaded = load();
       if (cancelled) return;
       setState(loaded);
+      stateRef.current = loaded;
       setHydrated(true);
       // Cross-device: merge cloud snapshot once (signed-in + migration run).
       if (cloudTried.current) return;
       cloudTried.current = true;
-      setCloudStatus("syncing");
-      const cloud = await fetchCloud();
+      await runSyncRef.current?.();
       if (cancelled) return;
-      if (!cloud) {
-        setCloudStatus("local");
-        return;
-      }
-      if (cloud.tablesMissing) {
-        setCloudStatus("local");
-        return;
-      }
-      setState((prev) => mergeSnapshots(prev, cloud.snapshot));
-      setCloudStatus("synced");
+      // flush any queued uploads against the merged state
+      await retryPending((id) => stateRef.current.analyses.find((a) => a.id === id));
+      if (!cancelled) setPending(pendingCount());
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Re-sync on sign-in/out and on reconnect
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        resetCachedUser();
+        cloudTried.current = true;
+        runSyncRef.current?.();
+      } else if (event === "SIGNED_OUT") {
+        resetCachedUser();
+        setCloudStatus("local");
+        setCloudError(null);
+      }
+    });
+    const onOnline = () => {
+      if (cloudTried.current) runSyncRef.current?.();
+    };
+    window.addEventListener("online", onOnline);
+    return () => {
+      sub.subscription.unsubscribe();
+      window.removeEventListener("online", onOnline);
+    };
+  }, []);
+
+  const syncNow = () => runSyncRef.current?.() ?? Promise.resolve();
 
   useEffect(() => {
     if (!hydrated) return;
@@ -137,18 +196,16 @@ export function useFaceIQStore() {
   }, [state, hydrated]);
 
   // Debounced cloud backup of plan/gender/ethnicity (analyses push individually)
-  const stateRef = useRef(state);
-  stateRef.current = state;
   useEffect(() => {
     if (!hydrated || cloudStatus === "local") return;
     const t = setTimeout(() => {
       const s = stateRef.current;
-      cloudPushState({ gender: s.gender, ethnicity: s.ethnicity, planActions: s.planActions }).then((ok) => {
+      cloudPushState({ gender: s.gender, ethnicity: s.ethnicity, skinType: s.skinType, planActions: s.planActions }).then((ok) => {
         if (!ok) setCloudStatus("error");
       });
     }, 1200);
     return () => clearTimeout(t);
-  }, [hydrated, cloudStatus, state.gender, state.ethnicity, state.planActions]);
+  }, [hydrated, cloudStatus, state.gender, state.ethnicity, state.skinType, state.planActions]);
 
   const addAnalysis = (
     front: string,
@@ -231,7 +288,7 @@ export function useFaceIQStore() {
     if (updated) cloudPush(updated as Analysis).then((ok) => ok && setCloudStatus("synced"));
   };
 
-  return { state, setState, addAnalysis, select, removeAnalysis, clearAll, addPlanAction, reorderPlan, removePlanAction, overrideRatio, cloudStatus };
+  return { state, setState, addAnalysis, select, removeAnalysis, clearAll, addPlanAction, reorderPlan, removePlanAction, overrideRatio, cloudStatus, cloudError, pending, syncNow };
 }
 
 export function mockRatiosForAnalysis(analysis: Analysis): typeof analysis.pillars {

@@ -7,6 +7,42 @@ import type { Analysis, FaceIQState, Pillar, PlanAction } from "./types";
 export type CloudStatus = "local" | "syncing" | "synced" | "error";
 
 let cachedUserId: string | null | undefined;
+let lastError: string | null = null;
+
+export function lastCloudError(): string | null {
+  return lastError;
+}
+
+const PENDING_KEY = "faceiq_pending_push";
+
+function readPending(): string[] {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY);
+    const arr = raw ? (JSON.parse(raw) as string[]) : [];
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePending(ids: string[]) {
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(ids));
+  } catch {}
+}
+
+export function markPending(clientId: string) {
+  const cur = readPending();
+  if (!cur.includes(clientId)) writePending([...cur, clientId]);
+}
+
+function clearPending(clientId: string) {
+  writePending(readPending().filter((x) => x !== clientId));
+}
+
+export function pendingCount(): number {
+  return readPending().length;
+}
 
 export async function getUserId(): Promise<string | null> {
   if (cachedUserId !== undefined) return cachedUserId;
@@ -44,6 +80,7 @@ type CloudSnapshot = {
   planActions: PlanAction[];
   gender: string;
   ethnicity: string;
+  skinType: "oily" | "dry" | "combination" | "sensitive";
 };
 
 /** Fetch the user's cloud snapshot. Returns null when offline/signed-out/tables-missing. */
@@ -86,13 +123,15 @@ export async function fetchCloud(): Promise<{ snapshot: CloudSnapshot; tablesMis
         keyPoints: lp?.keys ?? undefined,
       };
     });
-    const sRow = stateRes.data as { gender?: string; ethnicity?: string; plan_actions?: unknown } | null;
+    const sRow = stateRes.data as { gender?: string; ethnicity?: string; skin_type?: string; plan_actions?: unknown } | null;
+    const skin = sRow?.skin_type;
     return {
       snapshot: {
         analyses,
         planActions: Array.isArray(sRow?.plan_actions) ? (sRow.plan_actions as PlanAction[]) : [],
         gender: typeof sRow?.gender === "string" ? sRow.gender : "Male",
         ethnicity: typeof sRow?.ethnicity === "string" ? sRow.ethnicity : "White / Caucasian",
+        skinType: skin === "oily" || skin === "dry" || skin === "combination" || skin === "sensitive" ? skin : "combination",
       },
       tablesMissing: false,
     };
@@ -102,7 +141,7 @@ export async function fetchCloud(): Promise<{ snapshot: CloudSnapshot; tablesMis
 }
 
 function emptySnapshot(): CloudSnapshot {
-  return { analyses: [], planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
+  return { analyses: [], planActions: [], gender: "Male", ethnicity: "White / Caucasian", skinType: "combination" };
 }
 
 /** Merge cloud + local by client id. On conflict prefer the copy that still has photos. */
@@ -132,21 +171,34 @@ export function mergeSnapshots(local: FaceIQState, cloud: CloudSnapshot): FaceIQ
     planActions,
     gender: local.gender !== "Male" ? local.gender : cloud.gender,
     ethnicity: local.ethnicity !== "White / Caucasian" ? local.ethnicity : cloud.ethnicity,
+    skinType: local.skinType !== "combination" ? local.skinType : cloud.skinType,
   };
 }
 
 export async function pushAnalysis(a: Analysis): Promise<boolean> {
   const userId = await getUserId();
-  if (!userId) return false;
+  if (!userId) {
+    lastError = "Not signed in";
+    return false;
+  }
   try {
+    // Shrink oversized legacy photos before upload so big rows can't fail sync
+    let front = a.front_photo;
+    let side = a.side_photo;
+    if (front.length > 600_000 || side.length > 600_000) {
+      try {
+        const { downscalePhoto } = await import("./landmarks");
+        [front, side] = await Promise.all([downscalePhoto(front, 768, 0.78), downscalePhoto(side, 768, 0.78)]);
+      } catch {}
+    }
     const { error } = await supabase.from("scan_analyses").upsert(
       {
         user_id: userId,
         client_id: a.id,
         created_at: a.created_at,
         label: a.label,
-        front_photo: a.front_photo,
-        side_photo: a.side_photo,
+        front_photo: front,
+        side_photo: side,
         pillars: a.pillars as unknown as never,
         overall_score: a.overall_score,
         legacy_result: (a.legacy_result ?? null) as never,
@@ -158,11 +210,50 @@ export async function pushAnalysis(a: Analysis): Promise<boolean> {
       },
       { onConflict: "client_id" },
     );
-    if (error) return false;
+    if (error) {
+      lastError = error.message;
+      markPending(a.id);
+      return false;
+    }
+    clearPending(a.id);
     return true;
-  } catch {
+  } catch (e) {
+    lastError = e instanceof Error ? e.message : "Upload failed";
+    markPending(a.id);
     return false;
   }
+}
+
+/** Push one full local state snapshot (manual Sync + reconnect). */
+export async function syncAll(s: FaceIQState): Promise<{ pushed: number; failed: number; error: string | null }> {
+  const userId = await getUserId();
+  if (!userId) {
+    lastError = "Not signed in";
+    return { pushed: 0, failed: s.analyses.length, error: lastError };
+  }
+  let pushed = 0;
+  let failed = 0;
+  for (const a of s.analyses) {
+    if (await pushAnalysis(a)) pushed++;
+    else failed++;
+  }
+  const okState = await pushUserState({ gender: s.gender, ethnicity: s.ethnicity, skinType: s.skinType, planActions: s.planActions });
+  if (!okState) failed++;
+  return { pushed, failed, error: failed ? lastError : null };
+}
+
+/** Retry queued uploads for analyses present in state. Returns remaining count. */
+export async function retryPending(lookup: (id: string) => Analysis | undefined): Promise<number> {
+  const ids = readPending();
+  for (const id of ids) {
+    const a = lookup(id);
+    if (!a) {
+      clearPending(id);
+      continue;
+    }
+    await pushAnalysis(a);
+  }
+  return readPending().length;
 }
 
 export async function deleteAnalysis(clientId: string): Promise<void> {
@@ -185,23 +276,49 @@ export async function clearAnalyses(): Promise<void> {
   }
 }
 
-export async function pushUserState(s: Pick<FaceIQState, "gender" | "ethnicity" | "planActions">): Promise<boolean> {
+export async function pushUserState(s: Pick<FaceIQState, "gender" | "ethnicity" | "skinType" | "planActions">): Promise<boolean> {
   const userId = await getUserId();
-  if (!userId) return false;
+  if (!userId) {
+    lastError = "Not signed in";
+    return false;
+  }
   try {
     const { error } = await supabase.from("user_state").upsert(
       {
         user_id: userId,
         gender: s.gender,
         ethnicity: s.ethnicity,
+        skin_type: s.skinType,
         plan_actions: s.planActions as unknown as never,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
     );
-    if (error) return false;
+    if (error) {
+      // Back-compat: skin_type column may not exist yet (migration 2 not run)
+      if (/skin_type/i.test(error.message)) {
+        const retry = await supabase.from("user_state").upsert(
+          {
+            user_id: userId,
+            gender: s.gender,
+            ethnicity: s.ethnicity,
+            plan_actions: s.planActions as unknown as never,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" },
+        );
+        if (retry.error) {
+          lastError = retry.error.message;
+          return false;
+        }
+        return true;
+      }
+      lastError = error.message;
+      return false;
+    }
     return true;
-  } catch {
+  } catch (e) {
+    lastError = e instanceof Error ? e.message : "Upload failed";
     return false;
   }
 }

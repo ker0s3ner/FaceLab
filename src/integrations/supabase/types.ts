@@ -67,6 +67,7 @@ export type Database = {
           user_id: string
           gender: string
           ethnicity: string
+          skin_type: string
           plan_actions: Json
           updated_at: string
         }
@@ -74,6 +75,7 @@ export type Database = {
           user_id: string
           gender?: string
           ethnicity?: string
+          skin_type?: string
           plan_actions?: Json
           updated_at?: string
         }
@@ -81,6 +83,7 @@ export type Database = {
           user_id?: string
           gender?: string
           ethnicity?: string
+          skin_type?: string
           plan_actions?: Json
           updated_at?: string
         }

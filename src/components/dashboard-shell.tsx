@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { Analysis } from "@/lib/faceiq/types";
+import { SafeImg } from "./safe-img";
 
 export type DashboardTab = "overview" | "analysis" | "plan" | "simulate";
 
@@ -23,6 +24,9 @@ export function DashboardShell({
   activeTab,
   onTabChange,
   cloudStatus = "local",
+  cloudError = null,
+  pending = 0,
+  onSync,
   children,
 }: {
   analyses: Analysis[];
@@ -37,6 +41,9 @@ export function DashboardShell({
   activeTab: DashboardTab;
   onTabChange: (tab: DashboardTab) => void;
   cloudStatus?: "local" | "syncing" | "synced" | "error";
+  cloudError?: string | null;
+  pending?: number;
+  onSync?: () => void;
   children: React.ReactNode;
 }) {
   const canCompare = analyses.length >= 2;
@@ -72,8 +79,10 @@ export function DashboardShell({
         <div className="px-4 pb-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] tracking-widest uppercase text-zinc-400">History</span>
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            <button
+              onClick={onSync}
+              disabled={cloudStatus === "syncing" || !onSync}
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
                 cloudStatus === "synced"
                   ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                   : cloudStatus === "syncing"
@@ -83,16 +92,20 @@ export function DashboardShell({
                       : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
               }`}
               title={
-                cloudStatus === "synced"
-                  ? "Scans are backed up to your account and shared across devices"
+                cloudError ??
+                (cloudStatus === "synced"
+                  ? `Backed up to your account${pending ? ` · ${pending} pending` : ""} — click to sync now`
                   : cloudStatus === "syncing"
                     ? "Syncing with your account…"
-                    : "Stored on this device only — run the cloud migration to sync"
+                    : "Stored on this device only — click to sync (needs sign-in + migration)")
               }
             >
-              {cloudStatus === "synced" ? "● Synced" : cloudStatus === "syncing" ? "○ Syncing…" : cloudStatus === "error" ? "○ Sync issue" : "○ This device"}
-            </span>
+              {cloudStatus === "synced" ? `● Synced${pending ? ` (${pending})` : ""}` : cloudStatus === "syncing" ? "○ Syncing…" : cloudStatus === "error" ? "○ Retry sync" : "○ Sync now"}
+            </button>
           </div>
+          {cloudError && (
+            <p className="mt-1 text-[11px] leading-snug text-red-600 dark:text-red-400">{cloudError}</p>
+          )}
           <div className="mt-3 flex gap-2">
             <button onClick={onNew} className="flex-1 rounded-full bg-zinc-900 py-2 text-sm font-medium text-white dark:bg-white dark:text-zinc-900">+ New</button>
             <button
@@ -122,7 +135,7 @@ export function DashboardShell({
                       onClick={() => onSelect(a.id)}
                       className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left ${active ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800" : "border-zinc-200 bg-white hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"}`}
                     >
-                      <img src={a.front_photo} alt="" className="h-12 w-9 rounded-lg object-cover bg-zinc-100" />
+                      <SafeImg src={a.front_photo} alt="" className="h-12 w-9 rounded-lg object-cover bg-zinc-100" label="No photo" />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs tabular-nums text-zinc-600 dark:text-zinc-300">H {h} · {a.overall_score.toFixed(1)} overall</p>
                         <p className="text-xs text-zinc-400">{a.label} · {new Date(a.created_at).toLocaleDateString()}</p>
