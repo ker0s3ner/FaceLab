@@ -1068,27 +1068,95 @@ function SimulateTab({ selected }: { selected: any }) {
 }
 
 function FaceGPTTab({ selected }: { selected: any }) {
+  const { state, addPlanAction } = useFaceIQStore();
+  const [mode, setMode] = useState<"general" | "plan">("general");
   const [input, setInput] = useState("");
-  const [msgs, setMsgs] = useState<{ role: "user" | "assistant"; text: string }[]>([{ role: "assistant", text: `Hi! I'm FaceGPT. I see your overall ${selected.overall_score.toFixed(1)}/10. Ask anything about your analysis or say "make my jaw more defined" to simulate.` }]);
+  const [msgs, setMsgs] = useState<
+    { role: "user" | "assistant"; text: string; morph: { label: string; delta: string; before: number; after: number } | undefined }[]
+  >([{ role: "assistant", text: `Hi! I'm FaceGPT 1.5 — conversational AI that answers any question about your face — and creates complex morphs in seconds with simple language. I see your overall ${selected.overall_score.toFixed(1)}/10 across 4 pillars. Ask anything or say "make my jaw more defined" to simulate.`, morph: undefined }]);
+
+  const handleMorph = (q: string): { label: string; delta: string; before: number; after: number } | null => {
+    const lower = q.toLowerCase();
+    if (lower.includes("jaw")) return { label: "Jaw Advancement +6mm", delta: "+0.42", before: selected.overall_score, after: Math.min(10, selected.overall_score + 0.42) };
+    if (lower.includes("chin")) return { label: "Genioplasty Chin +8mm", delta: "+0.53", before: selected.overall_score, after: Math.min(10, selected.overall_score + 0.53) };
+    if (lower.includes("nose") || lower.includes("rhino")) return { label: "Rhinoplasty preset", delta: "+0.38", before: selected.overall_score, after: Math.min(10, selected.overall_score + 0.38) };
+    if (lower.includes("cheek")) return { label: "Cheek Filler preset", delta: "+0.24", before: selected.overall_score, after: Math.min(10, selected.overall_score + 0.24) };
+    if (lower.includes("brow")) return { label: "Brow Height +2mm", delta: "+0.18", before: selected.overall_score, after: Math.min(10, selected.overall_score + 0.18) };
+    return null;
+  };
+
   const send = () => {
     if (!input.trim()) return;
     const q = input;
     setInput("");
-    setMsgs((m) => [...m, { role: "user", text: q }, { role: "assistant", text: `Based on your ${selected.overall_score.toFixed(1)} score and ${selected.pillars.length} pillars: "${q}" — this is educational only. Try Plan or Simulate for actions.` }]);
+    const morph = handleMorph(q);
+    const planMatch = q.toLowerCase().match(/add (.*) to (my )?plan/);
+    let reply = "";
+    if (planMatch && mode === "plan") {
+      const name = planMatch[1]?.trim() ?? "";
+      const found = TREATMENTS.find((t) => t.name.toLowerCase().includes(name.toLowerCase().slice(0, 6)));
+      if (found) {
+        addPlanAction(found.name);
+        reply = `Added ${found.name} (${found.invasiveness_tag}, +${found.score_delta.toFixed(2)}) to your plan. It's now ${state.planActions.length + 1} actions. See Plan tab to reorder.`;
+      } else {
+        reply = `I couldn't find "${name}" in the 36-treatment catalog. Try "add genioplasty to my plan" or "add jaw fillers".`;
+      }
+    } else if (morph) {
+      reply = `Applied ${morph.label} — simulated from ${morph.before.toFixed(1)} → ${morph.after.toFixed(1)} (${morph.delta}). This is a 2D preview; real morph needs 3DMM fitting. Adjust further in Simulate tab.`;
+    } else if (mode === "plan") {
+      reply = `Plan Mode: Based on your ${selected.overall_score.toFixed(1)} (Harmony ${selected.pillars.find((x: any) => x.name === "Harmony")?.front_score.toFixed(1)}), "${q}" — I'd rank non-surgical fillers first for quick wins, then consider surgical options like Genioplasty (+0.53) if you want profile change. Say "add [treatment] to my plan".`;
+    } else {
+      const pillarSummary = selected.pillars.map((p: any) => `${p.name} ${p.front_score.toFixed(1)}`).join(", ");
+      reply = `Based on your analysis (${pillarSummary}, overall ${selected.overall_score.toFixed(1)}): "${q}" — educational only. Your strengths are in ${selected.pillars.find((p: any) => p.ratios.some((r: any) => r.severity_tag === "IDEAL"))?.name ?? "Harmony"}; focus on midface/jaw per your ratios. Try "make my jaw more defined" for a live morph.`;
+    }
+    setMsgs((m) => [...m, { role: "user", text: q, morph: undefined }, { role: "assistant", text: reply, morph: morph ?? undefined }]);
   };
+
   return (
-    <Card className="p-4 sm:p-6">
-      <h3 className="font-semibold">FaceGPT</h3>
-      <div className="mt-4 space-y-3 max-h-[50vh] overflow-auto pr-1">
-        {msgs.map((m, i) => (
-          <div key={i} className={`rounded-xl px-3 py-2 text-sm ${m.role === "user" ? "bg-zinc-900 text-white ml-8" : "bg-zinc-100 dark:bg-zinc-800 mr-8"}`}>{m.text}</div>
-        ))}
-      </div>
-      <div className="mt-4 flex gap-2">
-        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Ask about your face..." className="flex-1 rounded-full border px-4 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" />
-        <Button onClick={send} className="rounded-full">Send</Button>
-      </div>
-    </Card>
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">FaceGPT 1.5</h3>
+          <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-xs text-white dark:bg-white dark:text-zinc-900">Simulate v1.0</span>
+          <div className="ml-auto flex rounded-full border overflow-hidden dark:border-zinc-700">
+            <button onClick={() => setMode("general")} className={`px-3 py-1 text-xs ${mode === "general" ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" : "bg-white dark:bg-zinc-900"}`}>Q&A</button>
+            <button onClick={() => setMode("plan")} className={`px-3 py-1 text-xs ${mode === "plan" ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" : "bg-white dark:bg-zinc-900"}`}>Plan Mode</button>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">Context-aware of your current analysis (scores, ratios, plan). {mode === "plan" ? "Scoped to editing your action plan." : 'Create morphs with plain language — e.g. "make my jaw more defined".'} Conversational AI that creates complex morphs in seconds.</p>
+        <div className="mt-3 rounded-lg border bg-zinc-50 p-2 text-xs dark:bg-zinc-800/50 dark:border-zinc-700">
+          <span className="font-medium">Context:</span> {selected.overall_score.toFixed(1)} overall · {selected.pillars.map((p: any) => `${p.name.slice(0, 2)} ${p.front_score.toFixed(1)}`).join(" · ")} · {state.planActions.length} plan actions
+        </div>
+      </Card>
+
+      <Card className="p-4 sm:p-6">
+        <div className="space-y-3 max-h-[50vh] overflow-auto pr-1">
+          {msgs.map((m, i) => (
+            <div key={i} className={`space-y-2 ${m.role === "user" ? "ml-8" : "mr-8"}`}>
+              <div className={`rounded-xl px-3 py-2 text-sm ${m.role === "user" ? "bg-zinc-900 text-white" : "bg-zinc-100 dark:bg-zinc-800"}`}>{m.text}</div>
+              {m.morph && (
+                <div className="rounded-xl border overflow-hidden dark:border-zinc-700">
+                  <div className="grid grid-cols-2 gap-0">
+                    <div className="relative"><img src={selected.front_photo} alt="before" className="aspect-[3/4] w-full object-cover" /><span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">BEFORE {m.morph.before.toFixed(1)}</span></div>
+                    <div className="relative"><img src={selected.front_photo} alt="after" className="aspect-[3/4] w-full object-cover brightness-110" /><span className="absolute left-2 top-2 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] text-white">AFTER {m.morph.after.toFixed(1)}</span></div>
+                  </div>
+                  <div className="p-2 flex items-center justify-between text-xs"><span>{m.morph.label}</span><span className="font-medium text-emerald-600">{m.morph.delta}</span></div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex gap-2">
+          <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder={mode === "plan" ? 'Try "add genioplasty to my plan"...' : 'Ask anything, e.g. "make my jaw more defined"...'} className="flex-1 rounded-full border px-4 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900" />
+          <Button onClick={send} className="rounded-full">Send</Button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {['"make my jaw more defined"', '"add genioplasty to my plan"', '"what\'s my weakest pillar?"'].map((s) => (
+            <button key={s} onClick={() => setInput(s.replace(/"/g, ""))} className="rounded-full border px-2.5 py-1 text-xs hover:bg-zinc-50 dark:border-zinc-700">{s}</button>
+          ))}
+        </div>
+      </Card>
+    </div>
   );
 }
 
