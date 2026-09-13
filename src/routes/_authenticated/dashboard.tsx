@@ -37,7 +37,7 @@ function Dashboard() {
   const { user } = Route.useRouteContext();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { state, addAnalysis, select, clearAll } = useFaceIQStore();
+  const { state, addAnalysis, select, clearAll, cloudStatus } = useFaceIQStore();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [analysisPillar, setAnalysisPillar] = useState<string>("Harmony");
   const [showNewScan, setShowNewScan] = useState(false);
@@ -86,6 +86,7 @@ function Dashboard() {
       onSignOut={handleSignOut}
       activeTab={activeTab}
       onTabChange={setActiveTab}
+      cloudStatus={cloudStatus}
     >
 
       {showNewScan && (

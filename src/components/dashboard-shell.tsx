@@ -22,6 +22,7 @@ export function DashboardShell({
   onSignOut,
   activeTab,
   onTabChange,
+  cloudStatus = "local",
   children,
 }: {
   analyses: Analysis[];
@@ -35,6 +36,7 @@ export function DashboardShell({
   onSignOut: () => void;
   activeTab: DashboardTab;
   onTabChange: (tab: DashboardTab) => void;
+  cloudStatus?: "local" | "syncing" | "synced" | "error";
   children: React.ReactNode;
 }) {
   const canCompare = analyses.length >= 2;
@@ -70,7 +72,26 @@ export function DashboardShell({
         <div className="px-4 pb-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] tracking-widest uppercase text-zinc-400">History</span>
-            <span className="text-zinc-400 text-xs">⌄</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                cloudStatus === "synced"
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                  : cloudStatus === "syncing"
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                    : cloudStatus === "error"
+                      ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300"
+                      : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+              }`}
+              title={
+                cloudStatus === "synced"
+                  ? "Scans are backed up to your account and shared across devices"
+                  : cloudStatus === "syncing"
+                    ? "Syncing with your account…"
+                    : "Stored on this device only — run the cloud migration to sync"
+              }
+            >
+              {cloudStatus === "synced" ? "● Synced" : cloudStatus === "syncing" ? "○ Syncing…" : cloudStatus === "error" ? "○ Sync issue" : "○ This device"}
+            </span>
           </div>
           <div className="mt-3 flex gap-2">
             <button onClick={onNew} className="flex-1 rounded-full bg-zinc-900 py-2 text-sm font-medium text-white dark:bg-white dark:text-zinc-900">+ New</button>

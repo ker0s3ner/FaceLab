@@ -1,7 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Analysis, FaceIQState, PlanAction } from "./types";
 import { pillarsFromResult } from "./types";
 import type { AnalysisResult } from "@/lib/analyze.functions";
+import {
+  deleteAnalysis as cloudDelete,
+  clearAnalyses as cloudClear,
+  fetchCloud,
+  mergeSnapshots,
+  pushAnalysis as cloudPush,
+  pushUserState as cloudPushState,
+  type CloudStatus,
+} from "./cloud";
 
 const KEY = "faceiq_state_v2";
 const LEGACY_KEY = "faceiq_scans";
@@ -68,11 +77,36 @@ export function useFaceIQStore() {
     return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian" };
   });
   const [hydrated, setHydrated] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState<CloudStatus>("local");
+  const cloudTried = useRef(false);
 
   useEffect(() => {
-    const loaded = load();
-    setState(loaded);
-    setHydrated(true);
+    let cancelled = false;
+    (async () => {
+      const loaded = load();
+      if (cancelled) return;
+      setState(loaded);
+      setHydrated(true);
+      // Cross-device: merge cloud snapshot once (signed-in + migration run).
+      if (cloudTried.current) return;
+      cloudTried.current = true;
+      setCloudStatus("syncing");
+      const cloud = await fetchCloud();
+      if (cancelled) return;
+      if (!cloud) {
+        setCloudStatus("local");
+        return;
+      }
+      if (cloud.tablesMissing) {
+        setCloudStatus("local");
+        return;
+      }
+      setState((prev) => mergeSnapshots(prev, cloud.snapshot));
+      setCloudStatus("synced");
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -100,6 +134,20 @@ export function useFaceIQStore() {
     }
   }, [state, hydrated]);
 
+  // Debounced cloud backup of plan/gender/ethnicity (analyses push individually)
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  useEffect(() => {
+    if (!hydrated || cloudStatus === "local") return;
+    const t = setTimeout(() => {
+      const s = stateRef.current;
+      cloudPushState({ gender: s.gender, ethnicity: s.ethnicity, planActions: s.planActions }).then((ok) => {
+        if (!ok) setCloudStatus("error");
+      });
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [hydrated, cloudStatus, state.gender, state.ethnicity, state.planActions]);
+
   const addAnalysis = (
     front: string,
     side: string,
@@ -123,15 +171,25 @@ export function useFaceIQStore() {
       landmarkPoints: extra?.points,
     };
     setState((s) => ({ ...s, analyses: [...s.analyses, analysis], selectedId: id }));
+    // Cross-device backup (fire-and-forget; local stays source of truth)
+    cloudPush(analysis).then((ok) => {
+      if (ok) setCloudStatus("synced");
+    });
     return id;
   };
 
   const select = (id: string) => setState((s) => ({ ...s, selectedId: id }));
-  const removeAnalysis = (id: string) => setState((s) => {
-    const next = s.analyses.filter((a) => a.id !== id);
-    return { ...s, analyses: next, selectedId: s.selectedId === id ? (next[next.length - 1]?.id ?? null) : s.selectedId };
-  });
-  const clearAll = () => setState((s) => ({ ...s, analyses: [], selectedId: null }));
+  const removeAnalysis = (id: string) => {
+    setState((s) => {
+      const next = s.analyses.filter((a) => a.id !== id);
+      return { ...s, analyses: next, selectedId: s.selectedId === id ? (next[next.length - 1]?.id ?? null) : s.selectedId };
+    });
+    cloudDelete(id);
+  };
+  const clearAll = () => {
+    setState((s) => ({ ...s, analyses: [], selectedId: null }));
+    cloudClear();
+  };
 
   const addPlanAction = (treatment: string) => setState((s) => ({ ...s, planActions: [...s.planActions, { treatment, order_index: s.planActions.length, status: "pending" as const }] }));
   const reorderPlan = (from: number, to: number) => setState((s) => {
@@ -143,7 +201,7 @@ export function useFaceIQStore() {
   });
   const removePlanAction = (idx: number) => setState((s) => ({ ...s, planActions: s.planActions.filter((_, i) => i !== idx).map((a, i) => ({ ...a, order_index: i })) }));
 
-  return { state, setState, addAnalysis, select, removeAnalysis, clearAll, addPlanAction, reorderPlan, removePlanAction };
+  return { state, setState, addAnalysis, select, removeAnalysis, clearAll, addPlanAction, reorderPlan, removePlanAction, cloudStatus };
 }
 
 export function mockRatiosForAnalysis(analysis: Analysis): typeof analysis.pillars {
