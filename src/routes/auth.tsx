@@ -43,8 +43,12 @@ function AuthPage() {
   async function signIn() {
     setLoading(true);
     setError(null);
+    // Preserve ?source=... per spec §2 /login?source=landing_signup
+    const sp = new URLSearchParams(window.location.search);
+    const source = sp.get("source");
+    const redirectUri = source ? `${window.location.origin}?source=${encodeURIComponent(source)}` : window.location.origin;
     const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
+      redirect_uri: redirectUri,
     });
     if (result.error) {
       setError("Sign in failed. Please try again.");

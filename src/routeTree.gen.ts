@@ -12,7 +12,14 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as CelebsRouteImport } from './routes/celebs'
+import { Route as CreatorLeagueRouteImport } from './routes/creator-league'
+import { Route as JoinUsRouteImport } from './routes/join-us'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as CelebsWikiSlugRouteImport } from './routes/celebs-wiki.$slug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,42 +35,136 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CelebsRoute = CelebsRouteImport.update({
+  id: '/celebs',
+  path: '/celebs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CreatorLeagueRoute = CreatorLeagueRouteImport.update({
+  id: '/creator-league',
+  path: '/creator-league',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JoinUsRoute = JoinUsRouteImport.update({
+  id: '/join-us',
+  path: '/join-us',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const CelebsWikiSlugRoute = CelebsWikiSlugRouteImport.update({
+  id: '/celebs-wiki/$slug',
+  path: '/celebs-wiki/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/celebs': typeof CelebsRoute
+  '/creator-league': typeof CreatorLeagueRoute
+  '/join-us': typeof JoinUsRoute
+  '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/celebs-wiki/$slug': typeof CelebsWikiSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/celebs': typeof CelebsRoute
+  '/creator-league': typeof CreatorLeagueRoute
+  '/join-us': typeof JoinUsRoute
+  '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/celebs-wiki/$slug': typeof CelebsWikiSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/celebs': typeof CelebsRoute
+  '/creator-league': typeof CreatorLeagueRoute
+  '/join-us': typeof JoinUsRoute
+  '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
+  '/terms': typeof TermsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/celebs-wiki/$slug': typeof CelebsWikiSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/dashboard'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/celebs'
+    | '/creator-league'
+    | '/join-us'
+    | '/login'
+    | '/privacy'
+    | '/terms'
+    | '/dashboard'
+    | '/celebs-wiki/$slug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard'
+  to:
+    | '/'
+    | '/auth'
+    | '/celebs'
+    | '/creator-league'
+    | '/join-us'
+    | '/login'
+    | '/privacy'
+    | '/terms'
+    | '/dashboard'
+    | '/celebs-wiki/$slug'
   id:
-    '__root__' | '/' | '/_authenticated' | '/auth' | '/_authenticated/dashboard'
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/celebs'
+    | '/creator-league'
+    | '/join-us'
+    | '/login'
+    | '/privacy'
+    | '/terms'
+    | '/_authenticated/dashboard'
+    | '/celebs-wiki/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  CelebsRoute: typeof CelebsRoute
+  CreatorLeagueRoute: typeof CreatorLeagueRoute
+  JoinUsRoute: typeof JoinUsRoute
+  LoginRoute: typeof LoginRoute
+  PrivacyRoute: typeof PrivacyRoute
+  TermsRoute: typeof TermsRoute
+  CelebsWikiSlugRoute: typeof CelebsWikiSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -89,12 +190,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/celebs': {
+      id: '/celebs'
+      path: '/celebs'
+      fullPath: '/celebs'
+      preLoaderRoute: typeof CelebsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/creator-league': {
+      id: '/creator-league'
+      path: '/creator-league'
+      fullPath: '/creator-league'
+      preLoaderRoute: typeof CreatorLeagueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/join-us': {
+      id: '/join-us'
+      path: '/join-us'
+      fullPath: '/join-us'
+      preLoaderRoute: typeof JoinUsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/celebs-wiki/$slug': {
+      id: '/celebs-wiki/$slug'
+      path: '/celebs-wiki/$slug'
+      fullPath: '/celebs-wiki/$slug'
+      preLoaderRoute: typeof CelebsWikiSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
   }
 }
@@ -114,6 +264,13 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  CelebsRoute: CelebsRoute,
+  CreatorLeagueRoute: CreatorLeagueRoute,
+  JoinUsRoute: JoinUsRoute,
+  LoginRoute: LoginRoute,
+  PrivacyRoute: PrivacyRoute,
+  TermsRoute: TermsRoute,
+  CelebsWikiSlugRoute: CelebsWikiSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

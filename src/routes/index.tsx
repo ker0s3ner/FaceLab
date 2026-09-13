@@ -1,6 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FaceAnalyzer } from "@/components/face-analyzer";
-import { AuthNavLink } from "@/components/auth-nav-link";
 import {
   CtaButton,
   Eyebrow,
@@ -43,12 +41,6 @@ export const Route = createFileRoute("/")({
   }),
   component: Index,
 });
-
-const NAV_LINKS = [
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Why it works", href: "#why-it-works" },
-  { label: "Try it free", href: "#analyze" },
-];
 
 function NavLink({ label, href }: { label: string; href: string }) {
   return (
@@ -94,42 +86,27 @@ function HeroStats() {
 function Index() {
   return (
     <div className="min-h-screen bg-transparent antialiased overflow-x-hidden">
-      {/* Nav */}
-      <nav className="fixed top-4 left-4 right-4 sm:left-6 sm:right-6 md:left-12 md:right-12 lg:left-20 lg:right-20 z-50 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-500 rounded-full bg-transparent border border-transparent">
-        <div className="px-4 sm:px-6">
-          <div className="flex items-center justify-between h-12">
-            <a
-              href="/"
-              className="flex items-center gap-1.5 sm:gap-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100 min-w-0 flex-shrink-0"
-            >
-              <span className="brand-display text-lg leading-none">FaceIQ</span>
-            </a>
+      {/* Nav — simplified: only brand + Sign In, no smushing on small screens */}
+      <nav className="sticky top-0 z-50 border-b border-zinc-100 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:border-zinc-800 dark:bg-zinc-950/80">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+          <a
+            href="/"
+            className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-zinc-100 min-w-0 shrink-0"
+          >
+            <span className="brand-display text-lg leading-none">FaceIQ</span>
+            <span className="hidden sm:inline text-xs font-normal tracking-widest uppercase text-zinc-400 dark:text-zinc-500">
+              Labs
+            </span>
+          </a>
 
-            <div className="hidden md:flex items-center gap-8">
-              {NAV_LINKS.map((link) => (
-                <NavLink key={link.href} label={link.label} href={link.href} />
-              ))}
-              <AuthNavLink />
-              <CtaButton href="#analyze" className="hidden md:inline-flex">
-                Try Free
-              </CtaButton>
-            </div>
-
-            <div className="flex items-center gap-2 sm:gap-3 md:hidden flex-shrink-0">
-              <AuthNavLink />
-              <CtaButton
-                href="#analyze"
-                className="text-[10px] sm:text-[11px] px-3 sm:px-4 py-1.5 hidden-shrink"
-              >
-                Try Free
-              </CtaButton>
-            </div>
-          </div>
+          <CtaButton href="/login?source=landing_signup" className="shrink-0 px-5 py-2.5 text-sm">
+            Sign In →
+          </CtaButton>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="relative flex flex-col items-center px-6 sm:px-8 md:px-16 lg:px-20 pt-28 sm:pt-36 md:pt-44 pb-20 overflow-hidden hero-light dark:hero-dark">
+      <section className="relative flex flex-col items-center px-6 sm:px-8 md:px-16 lg:px-20 pt-16 sm:pt-20 md:pt-28 pb-20 overflow-hidden hero-light dark:hero-dark">
         {/* atmospheric background layers */}
         <div className="absolute inset-0 z-0 pointer-events-none opacity-100 dark:opacity-0 transition-opacity duration-700">
           <div
@@ -192,8 +169,8 @@ function Index() {
           </SubCopy>
 
           <ActionRow
-            action={<CtaButton href="#analyze">Try Free</CtaButton>}
-            note="Side profile analysis is free."
+            action={<CtaButton href="/login?source=landing_signup">Sign In →</CtaButton>}
+            note="All analysis happens inside your dashboard."
           />
         </div>
       </section>
@@ -393,27 +370,10 @@ function Index() {
             </div>
 
             <ActionRow
-              action={<CtaButton href="#analyze">See your projection</CtaButton>}
+              action={<CtaButton href="/login?source=landing_signup">See your projection →</CtaButton>}
               note="A realistic view of where you start — and where you might go."
             />
             {bylineCredits()}
-          </div>
-        </div>
-      </section>
-
-      {/* Try it free - analysis section, unchanged behavior */}
-      <section
-        id="analyze"
-        className="relative py-20 md:py-28 px-6 sm:px-8 md:px-16 lg:px-24 bg-white dark:bg-zinc-950/60"
-      >
-        <div className="max-w-4xl mx-auto">
-          <SectionTitle eyebrow={<Eyebrow>Start now</Eyebrow>} title="Begin your assessment." />
-          <SubCopy className="mt-6">
-            Upload your front and side photos. Get your first honest read in under a minute.
-          </SubCopy>
-
-          <div className="mt-12 max-w-2xl mx-auto">
-            <FaceAnalyzer />
           </div>
         </div>
       </section>
@@ -459,7 +419,7 @@ function Index() {
             it clearly.
           </p>
           <div className="flex justify-center">
-            <CtaButton href="#analyze">Begin Your Assessment</CtaButton>
+            <CtaButton href="/login?source=landing_signup">Sign In →</CtaButton>
           </div>
           <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-5 tracking-wide">
             Your future self will thank you.
