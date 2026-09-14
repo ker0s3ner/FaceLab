@@ -173,7 +173,7 @@ function Dashboard() {
           <div className="mt-3 grid sm:grid-cols-2 gap-3">
             {state.analyses.filter((a) => compareIds.includes(a.id)).map((a) => (
               <div key={a.id} className="rounded-xl border p-3 dark:border-zinc-800 flex gap-3">
-                <img src={a.front_photo} alt="" className="h-16 w-12 rounded object-cover" />
+                <SafeImg src={a.front_photo} alt="" className="h-16 w-12 rounded object-cover" />
                 <div><p className="text-sm font-medium">{a.overall_score.toFixed(1)} overall</p><p className="text-xs text-zinc-500">{a.label}</p></div>
               </div>
             ))}
@@ -518,8 +518,8 @@ function OverviewTab({ selected, onViewPillar, earliest, onOpenRatio }: { select
         </div>
         <div className="mt-4 rounded-2xl border p-4 bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-800 flex items-center gap-4">
           <div className="flex -space-x-2">
-            <img src={selected.front_photo} alt="" className="h-12 w-9 rounded-lg border-2 border-white object-cover" />
-            <img src={selected.side_photo} alt="" className="h-12 w-9 rounded-lg border-2 border-white object-cover" />
+            <SafeImg src={selected.front_photo} alt="" className="h-12 w-9 rounded-lg border-2 border-white object-cover" />
+            <SafeImg src={selected.side_photo} alt="" className="h-12 w-9 rounded-lg border-2 border-white object-cover" />
           </div>
           <div>
             <p className="text-xs tracking-widest uppercase text-zinc-400">Overall</p>
@@ -784,12 +784,12 @@ function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selec
       {isHarmony && (
       <div className="grid grid-cols-2 gap-3">
         <button onClick={() => setView("front")} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${view === "front" ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800 ring-1 ring-zinc-900 dark:ring-white" : "bg-white dark:bg-zinc-900 dark:border-zinc-800 hover:bg-zinc-50"}`}>
-          <img src={selected.front_photo} alt="front" className="h-12 w-9 rounded-lg object-cover" />
+          <SafeImg src={selected.front_photo} alt="front" className="h-12 w-9 rounded-lg object-cover" />
           <div><p className="text-xs tracking-widest uppercase text-zinc-400">Front</p><p className="font-medium tabular-nums">{selected.pillars.find((x: any) => x.name === pillar)?.front_score.toFixed(1) ?? "-"}</p></div>
           {view === "front" && <span className="ml-auto text-zinc-900 dark:text-white">●</span>}
         </button>
         <button onClick={() => setView("side")} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${view === "side" ? "border-zinc-900 bg-zinc-50 dark:border-white dark:bg-zinc-800 ring-1 ring-zinc-900 dark:ring-white" : "bg-white dark:bg-zinc-900 dark:border-zinc-800 hover:bg-zinc-50"}`}>
-          <img src={selected.side_photo} alt="side" className="h-12 w-9 rounded-lg object-cover" />
+          <SafeImg src={selected.side_photo} alt="side" className="h-12 w-9 rounded-lg object-cover" />
           <div><p className="text-xs tracking-widest uppercase text-zinc-400">Side</p><p className="font-medium tabular-nums">{selected.pillars.find((x: any) => x.name === pillar)?.side_score.toFixed(1) ?? "-"}</p></div>
           {view === "side" && <span className="ml-auto text-zinc-900 dark:text-white">●</span>}
         </button>
@@ -1182,7 +1182,7 @@ function MorphViewer({ photo, treatment, adv, vert, mix, onAdv, onVert, onMix }:
       <div className="relative overflow-hidden rounded-xl bg-zinc-100 dark:bg-zinc-800">
         {photo ? (
           <>
-            <img src={photo} alt="before" className={`w-full object-cover ${holdOrig ? "" : "hidden"}`} />
+            <SafeImg src={photo} alt="before" className={`w-full object-cover ${holdOrig ? "" : "hidden"}`} />
             <canvas ref={canvasRef} className={`w-full ${holdOrig ? "hidden" : ""}`} />
           </>
         ) : (
@@ -1425,11 +1425,11 @@ function SimulateTab({ selected }: { selected: any }) {
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
             <div className="relative">
-              <img src={selected.front_photo} alt="front" className="aspect-[3/4] w-full rounded-xl object-cover" />
+              <SafeImg src={selected.front_photo} alt="front" className="aspect-[3/4] w-full rounded-xl object-cover" />
               {linesOn && <div className="absolute inset-0 rounded-xl border-2 border-emerald-400/50 pointer-events-none" />}
             </div>
             <div className="relative">
-              <img src={selected.side_photo} alt="side" className="aspect-[3/4] w-full rounded-xl object-cover" />
+              <SafeImg src={selected.side_photo} alt="side" className="aspect-[3/4] w-full rounded-xl object-cover" />
               {linesOn && <div className="absolute inset-0 rounded-xl border-2 border-emerald-400/50 pointer-events-none" />}
             </div>
           </div>
@@ -1545,8 +1545,8 @@ function FaceGPTTab({ selected }: { selected: any }) {
               {m.morph && (
                 <div className="rounded-xl border overflow-hidden dark:border-zinc-700">
                   <div className="grid grid-cols-2 gap-0">
-                    <div className="relative"><img src={selected.front_photo} alt="before" className="aspect-[3/4] w-full object-cover" /><span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">BEFORE {m.morph.before.toFixed(1)}</span></div>
-                    <div className="relative"><img src={selected.front_photo} alt="after" className="aspect-[3/4] w-full object-cover brightness-110" /><span className="absolute left-2 top-2 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] text-white">AFTER {m.morph.after.toFixed(1)}</span></div>
+                    <div className="relative"><SafeImg src={selected.front_photo} alt="before" className="aspect-[3/4] w-full object-cover" /><span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">BEFORE {m.morph.before.toFixed(1)}</span></div>
+                    <div className="relative"><SafeImg src={selected.front_photo} alt="after" className="aspect-[3/4] w-full object-cover brightness-110" /><span className="absolute left-2 top-2 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] text-white">AFTER {m.morph.after.toFixed(1)}</span></div>
                   </div>
                   <div className="p-2 flex items-center justify-between text-xs"><span>{m.morph.label}</span><span className="font-medium text-emerald-600">{m.morph.delta}</span></div>
                 </div>
