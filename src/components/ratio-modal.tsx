@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { RatioOverlay } from "./ratio-overlay";
+import { SafeImg } from "./safe-img";
 import { severityColor, type PillarName, type Ratio } from "@/lib/faceiq/types";
 import {
   contributorsFor,
