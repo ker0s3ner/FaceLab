@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { RatioOverlay } from "./ratio-overlay";
+import { SafeImg } from "./safe-img";
 import { severityColor, type PillarName, type Ratio } from "@/lib/faceiq/types";
 import {
   contributorsFor,
@@ -108,7 +109,7 @@ export function RatioModal({
         <div className="grid gap-0 lg:grid-cols-2">
           {/* left: photo with overlay */}
           <div className="relative bg-zinc-100 dark:bg-zinc-950">
-            <img src={ctx.photoSrc} alt={ratio.name} className="aspect-[3/4] w-full object-cover" />
+            <SafeImg src={ctx.photoSrc} alt={ratio.name} className="aspect-[3/4] w-full object-cover" />
             {overlayOn && (
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full pointer-events-none">
                 <RatioOverlay
