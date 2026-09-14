@@ -16,76 +16,76 @@ export type Database = {
     Tables: {
       scan_analyses: {
         Row: {
-          id: string
-          user_id: string
           client_id: string
           created_at: string
-          label: string
           front_photo: string
-          side_photo: string
-          pillars: Json
-          overall_score: number
+          id: string
+          label: string
+          landmark_points: Json | null
           legacy_result: Json | null
           measurements: Json | null
-          landmark_points: Json | null
+          overall_score: number
+          pillars: Json
+          side_photo: string
           updated_at: string
+          user_id: string
         }
         Insert: {
-          id?: string
-          user_id: string
           client_id: string
           created_at?: string
-          label?: string
           front_photo?: string
-          side_photo?: string
-          pillars?: Json
-          overall_score?: number
+          id?: string
+          label?: string
+          landmark_points?: Json | null
           legacy_result?: Json | null
           measurements?: Json | null
-          landmark_points?: Json | null
+          overall_score?: number
+          pillars?: Json
+          side_photo?: string
           updated_at?: string
+          user_id: string
         }
         Update: {
-          id?: string
-          user_id?: string
           client_id?: string
           created_at?: string
-          label?: string
           front_photo?: string
-          side_photo?: string
-          pillars?: Json
-          overall_score?: number
+          id?: string
+          label?: string
+          landmark_points?: Json | null
           legacy_result?: Json | null
           measurements?: Json | null
-          landmark_points?: Json | null
+          overall_score?: number
+          pillars?: Json
+          side_photo?: string
           updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
       user_state: {
         Row: {
-          user_id: string
-          gender: string
           ethnicity: string
-          skin_type: string
+          gender: string
           plan_actions: Json
+          skin_type: string
           updated_at: string
+          user_id: string
         }
         Insert: {
-          user_id: string
-          gender?: string
           ethnicity?: string
-          skin_type?: string
+          gender?: string
           plan_actions?: Json
+          skin_type?: string
           updated_at?: string
+          user_id: string
         }
         Update: {
-          user_id?: string
-          gender?: string
           ethnicity?: string
-          skin_type?: string
+          gender?: string
           plan_actions?: Json
+          skin_type?: string
           updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
