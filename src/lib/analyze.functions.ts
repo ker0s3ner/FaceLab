@@ -29,7 +29,7 @@ export interface AnalysisResult {
   pillars?: {
     name: "Harmony" | "Angularity" | "Dimorphism" | "Features";
     score: number;
-    percentile?: string;
+    percentile?: string | undefined;
     ratios: { name: string; value: number; raw_measurement: string; ideal_range: [number, number]; severity: "IDEAL" | "GOOD" | "MODERATE" | "SEVERE" | "EXTREME"; delta: number; view: "front" | "side"; description: string }[];
   }[];
 }
