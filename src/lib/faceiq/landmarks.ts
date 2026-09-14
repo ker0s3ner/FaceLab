@@ -60,23 +60,37 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Downscale a photo data URL so it stays small enough for localStorage +
- * fast AI upload. Keeps aspect ratio, max dimension 1024px, JPEG ~0.82.
- * Returns the original if it is already small or downscaling fails.
+ * Downscale a photo data URL so it comfortably fits localStorage (~5MB total
+ * across every saved scan) and uploads fast. Always re-encodes to JPEG and
+ * keeps shrinking until the data URL is under ~180KB, so saved scans can never
+ * blow the storage quota (which previously blanked the photos).
  */
-export async function downscalePhoto(dataUrl: string, maxDim = 1024, quality = 0.82): Promise<string> {
+export async function downscalePhoto(dataUrl: string, maxDim = 768, quality = 0.78): Promise<string> {
   try {
-    if (dataUrl.length < 350_000) return dataUrl;
     const img = await loadImage(dataUrl);
-    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
-    if (scale >= 1) return dataUrl;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(img.naturalWidth * scale);
-    canvas.height = Math.round(img.naturalHeight * scale);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return dataUrl;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", quality);
+    const w = img.naturalWidth || 1;
+    const h = img.naturalHeight || 1;
+    const ctx2 = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      return { canvas, ctx };
+    };
+    let dim = maxDim;
+    let q = quality;
+    let out = dataUrl;
+    for (let i = 0; i < 5; i++) {
+      const scale = Math.min(1, dim / Math.max(w, h));
+      const { canvas, ctx } = ctx2();
+      if (!ctx) return dataUrl;
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      out = canvas.toDataURL("image/jpeg", q);
+      if (out.length <= 180_000) return out;
+      dim = Math.round(dim * 0.8);
+      q = Math.max(0.5, q - 0.08);
+    }
+    return out;
   } catch {
     return dataUrl;
   }

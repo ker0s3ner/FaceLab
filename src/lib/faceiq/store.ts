@@ -202,20 +202,23 @@ export function useFaceIQStore() {
       // passive effect). Photos are downscaled at upload so this should rarely
       // trigger; as a last resort drop only oversized mesh points (photos are
       // never blanked — cloud holds the backup).
+      // Step 1: drop the heavy mesh point clouds (recomputable), keep photos.
+      const noPoints = state.analyses.map((a) => ({ ...a, landmarkPoints: undefined }));
+      const write = (analyses: typeof noPoints) => {
+        localStorage.setItem(KEY, JSON.stringify({ ...state, analyses }));
+      };
       try {
-        const slim = {
-          ...state,
-          analyses: state.analyses.map((a) => ({
-            ...a,
-            front_photo: a.front_photo.length > 1_500_000 ? "" : a.front_photo,
-            side_photo: a.side_photo.length > 1_500_000 ? "" : a.side_photo,
-            landmarkPoints: undefined,
-          })),
-        };
-        localStorage.setItem(KEY, JSON.stringify(slim));
-      } catch {
-        // storage unavailable (private mode etc.) — keep in-memory state only
+        write(noPoints);
+        return;
+      } catch {}
+      // Step 2: keep only the most recent scans (photos intact — cloud holds the rest).
+      for (const keep of [5, 3, 1]) {
+        try {
+          write(noPoints.slice(-keep));
+          return;
+        } catch {}
       }
+      // Step 3: storage unavailable / still too small — keep in-memory state only.
     }
   }, [state, hydrated]);
 
