@@ -7,12 +7,21 @@ export class ErrorBoundary extends Component<
 > {
   override state = { error: null as Error | null };
 
-  static getDerivedStateFromError(error: Error) {
-    return { error };
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      error:
+        error instanceof Error
+          ? error
+          : new Error(typeof error === "string" && error ? error : "An unexpected error interrupted this view."),
+    };
   }
 
-  override componentDidCatch(error: Error) {
-    console.error(`[ErrorBoundary:${this.props.name ?? "app"}]`, error);
+  override componentDidCatch(error: unknown) {
+    const normalized =
+      error instanceof Error
+        ? error
+        : new Error(typeof error === "string" && error ? error : "Unknown dashboard error");
+    console.error(`[ErrorBoundary:${this.props.name ?? "app"}]`, normalized);
   }
 
   override render() {

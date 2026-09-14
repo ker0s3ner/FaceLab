@@ -188,8 +188,8 @@ export async function pushAnalysis(a: Analysis): Promise<boolean> {
   }
   try {
     // Shrink oversized legacy photos before upload so big rows can't fail sync
-    let front = a.front_photo;
-    let side = a.side_photo;
+    let front = typeof a.front_photo === "string" ? a.front_photo : "";
+    let side = typeof a.side_photo === "string" ? a.side_photo : "";
     if (front.length > 600_000 || side.length > 600_000) {
       try {
         const { downscalePhoto } = await import("./landmarks");

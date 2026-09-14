@@ -28,6 +28,10 @@ function load(): FaceIQState {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as FaceIQState;
+      if (!parsed || typeof parsed !== "object") {
+        console.warn("[store] Ignoring invalid saved dashboard state");
+        return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian", skinType: "combination" };
+      }
       // Migrate old shallow pillars (1-2 ratios) to deep AI-driven ratios so Key Strengths/Areas not empty.
       // Each entry is guarded individually — one corrupt scan must never kill the rest.
       let migrated = false;
@@ -112,27 +116,33 @@ export function useFaceIQStore() {
   const runSync = async () => {
     setCloudStatus("syncing");
     setCloudError(null);
-    const cloud = await fetchCloud();
-    if (!cloud) {
+    try {
+      const cloud = await fetchCloud();
+      if (!cloud) {
+        setCloudStatus("local");
+        setCloudError(lastCloudError());
+        return;
+      }
+      if (cloud.tablesMissing) {
+        setCloudStatus("local");
+        setCloudError("Cloud storage is not ready yet.");
+        return;
+      }
+      const merged = mergeSnapshots(stateRef.current, cloud.snapshot);
+      setState(merged);
+      const res = await syncAll(merged);
+      setPending(pendingCount());
+      if (res.failed > 0) {
+        setCloudStatus("error");
+        setCloudError(res.error ?? lastCloudError());
+      } else {
+        setCloudStatus("synced");
+        setCloudError(null);
+      }
+    } catch (error) {
+      console.error("[store] sync failed", error instanceof Error ? error : new Error("Unknown sync error"));
       setCloudStatus("local");
-      setCloudError(lastCloudError());
-      return;
-    }
-    if (cloud.tablesMissing) {
-      setCloudStatus("local");
-      setCloudError("Cloud tables missing — run the migration SQL in Supabase.");
-      return;
-    }
-    const merged = mergeSnapshots(stateRef.current, cloud.snapshot);
-    setState(merged);
-    const res = await syncAll(merged);
-    setPending(pendingCount());
-    if (res.failed > 0) {
-      setCloudStatus("error");
-      setCloudError(res.error ?? lastCloudError());
-    } else {
-      setCloudStatus("synced");
-      setCloudError(null);
+      setCloudError("Sync failed. Your scans remain available on this device.");
     }
   };
   const runSyncRef = useRef(runSync);
@@ -174,7 +184,10 @@ export function useFaceIQStore() {
       if (event === "SIGNED_IN") {
         resetCachedUser();
         cloudTried.current = true;
-        runSyncRef.current?.();
+        void runSyncRef.current?.().catch((error: unknown) => {
+          console.error("[store] sign-in sync failed", error instanceof Error ? error : new Error("Unknown sync error"));
+          setCloudStatus("local");
+        });
       } else if (event === "SIGNED_OUT") {
         resetCachedUser();
         setCloudStatus("local");
@@ -182,7 +195,12 @@ export function useFaceIQStore() {
       }
     });
     const onOnline = () => {
-      if (cloudTried.current) runSyncRef.current?.();
+      if (cloudTried.current) {
+        void runSyncRef.current?.().catch((error: unknown) => {
+          console.error("[store] reconnect sync failed", error instanceof Error ? error : new Error("Unknown sync error"));
+          setCloudStatus("local");
+        });
+      }
     };
     window.addEventListener("online", onOnline);
     return () => {
@@ -260,9 +278,14 @@ export function useFaceIQStore() {
     };
     setState((s) => ({ ...s, analyses: [...s.analyses, analysis], selectedId: id }));
     // Cross-device backup (fire-and-forget; local stays source of truth)
-    cloudPush(analysis).then((ok) => {
-      if (ok) setCloudStatus("synced");
-    });
+    void cloudPush(analysis)
+      .then((ok) => {
+        if (ok) setCloudStatus("synced");
+      })
+      .catch((error: unknown) => {
+        console.error("[store] analysis backup failed", error instanceof Error ? error : new Error("Unknown backup error"));
+        setCloudStatus("local");
+      });
     return id;
   };
 
@@ -272,11 +295,15 @@ export function useFaceIQStore() {
       const next = s.analyses.filter((a) => a.id !== id);
       return { ...s, analyses: next, selectedId: s.selectedId === id ? (next[next.length - 1]?.id ?? null) : s.selectedId };
     });
-    cloudDelete(id);
+    void cloudDelete(id).catch((error: unknown) => {
+      console.error("[store] cloud delete failed", error instanceof Error ? error : new Error("Unknown delete error"));
+    });
   };
   const clearAll = () => {
     setState((s) => ({ ...s, analyses: [], selectedId: null }));
-    cloudClear();
+    void cloudClear().catch((error: unknown) => {
+      console.error("[store] cloud clear failed", error instanceof Error ? error : new Error("Unknown clear error"));
+    });
   };
 
   const addPlanAction = (treatment: string) => setState((s) => ({ ...s, planActions: [...s.planActions, { treatment, order_index: s.planActions.length, status: "pending" as const }] }));
@@ -312,7 +339,16 @@ export function useFaceIQStore() {
         return next;
       }),
     }));
-    if (updated) cloudPush(updated as Analysis).then((ok) => ok && setCloudStatus("synced"));
+    if (updated) {
+      void cloudPush(updated as Analysis)
+        .then((ok) => {
+          if (ok) setCloudStatus("synced");
+        })
+        .catch((error: unknown) => {
+          console.error("[store] ratio backup failed", error instanceof Error ? error : new Error("Unknown backup error"));
+          setCloudStatus("local");
+        });
+    }
   };
 
   return { state, setState, addAnalysis, select, removeAnalysis, clearAll, addPlanAction, reorderPlan, removePlanAction, overrideRatio, cloudStatus, cloudError, pending, syncNow };

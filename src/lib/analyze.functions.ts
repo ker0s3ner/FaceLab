@@ -29,10 +29,39 @@ export interface AnalysisResult {
   pillars?: {
     name: "Harmony" | "Angularity" | "Dimorphism" | "Features";
     score: number;
-    percentile?: string;
+    percentile?: string | undefined;
     ratios: { name: string; value: number; raw_measurement: string; ideal_range: [number, number]; severity: "IDEAL" | "GOOD" | "MODERATE" | "SEVERE" | "EXTREME"; delta: number; view: "front" | "side"; description: string }[];
   }[];
 }
+
+const ratioResultSchema = z.object({
+  name: z.string().min(1),
+  value: z.number().finite().min(0).max(10),
+  raw_measurement: z.string(),
+  ideal_range: z.tuple([z.number().finite(), z.number().finite()]),
+  severity: z.enum(["IDEAL", "GOOD", "MODERATE", "SEVERE", "EXTREME"]),
+  delta: z.number().finite(),
+  view: z.enum(["front", "side"]),
+  description: z.string(),
+});
+
+const analysisResultSchema: z.ZodType<AnalysisResult> = z.object({
+  overallScore: z.number().finite().min(0).max(10),
+  frontScore: z.number().finite().min(0).max(10),
+  sideScore: z.number().finite().min(0).max(10),
+  breakdown: z.array(z.object({
+    category: z.string().min(1),
+    score: z.number().finite().min(0).max(10),
+    description: z.string(),
+  })).min(1),
+  summary: z.string().min(1),
+  pillars: z.array(z.object({
+    name: z.enum(["Harmony", "Angularity", "Dimorphism", "Features"]),
+    score: z.number().finite().min(0).max(10),
+    percentile: z.string().optional(),
+    ratios: z.array(ratioResultSchema).min(4),
+  })).length(4),
+});
 
 const PROMPT = `You are an expert facial analyst AI. Analyze these two photos - one front-facing portrait and one side profile - and provide a detailed, in-depth facial rating grounded in measurable anatomy.
 
@@ -134,9 +163,12 @@ export const analyzeFace = createServerFn({ method: "POST" })
     text = text.trim();
 
     try {
-      return JSON.parse(text) as AnalysisResult;
-    } catch {
+      return analysisResultSchema.parse(JSON.parse(text));
+    } catch (error) {
       console.error("Failed to parse AI response:", text);
-      throw new Error("Failed to parse analysis results");
+      if (error instanceof z.ZodError) {
+        console.error("Invalid AI analysis shape:", error.issues);
+      }
+      throw new Error("The analysis response was incomplete. Please try again.");
     }
   });
