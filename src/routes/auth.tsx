@@ -46,7 +46,9 @@ function AuthPage() {
     // Preserve ?source=... per spec §2 /login?source=landing_signup
     const sp = new URLSearchParams(window.location.search);
     const source = sp.get("source");
-    const redirectUri = source ? `${window.location.origin}?source=${encodeURIComponent(source)}` : window.location.origin;
+    const redirectUri = source
+      ? `${window.location.origin}/auth?source=${encodeURIComponent(source)}`
+      : `${window.location.origin}/auth`;
     const result = await lovable.auth.signInWithOAuth("google", {
       redirect_uri: redirectUri,
     });
