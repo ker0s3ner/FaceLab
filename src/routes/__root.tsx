@@ -126,8 +126,16 @@ function RootComponent() {
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
-      router.invalidate();
-      if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
+      void router.invalidate().catch((error: unknown) => {
+        const normalized = error instanceof Error ? error : new Error("Authentication refresh failed");
+        reportLovableError(normalized, { boundary: "auth_router_refresh" });
+      });
+      if (event !== "SIGNED_OUT") {
+        void queryClient.invalidateQueries().catch((error: unknown) => {
+          const normalized = error instanceof Error ? error : new Error("Account data refresh failed");
+          reportLovableError(normalized, { boundary: "auth_query_refresh" });
+        });
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, [router, queryClient]);

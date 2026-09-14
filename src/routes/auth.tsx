@@ -28,11 +28,19 @@ function AuthPage() {
 
   useEffect(() => {
     let active = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (active && data.session) navigate({ to: "/dashboard", replace: true });
-    });
+    void supabase.auth.getSession()
+      .then(({ data }) => {
+        if (active && data.session) return navigate({ to: "/dashboard", replace: true });
+      })
+      .catch(() => {
+        if (active) setError("Your session could not be restored. Please sign in again.");
+      });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate({ to: "/dashboard", replace: true });
+      if (session) {
+        void navigate({ to: "/dashboard", replace: true }).catch(() => {
+          if (active) setError("Your dashboard could not be opened. Please try again.");
+        });
+      }
     });
     return () => {
       active = false;

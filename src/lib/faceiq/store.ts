@@ -174,7 +174,10 @@ export function useFaceIQStore() {
       if (event === "SIGNED_IN") {
         resetCachedUser();
         cloudTried.current = true;
-        runSyncRef.current?.();
+        void runSyncRef.current?.().catch((error: unknown) => {
+          console.error("[store] sign-in sync failed", error instanceof Error ? error : new Error("Unknown sync error"));
+          setCloudStatus("local");
+        });
       } else if (event === "SIGNED_OUT") {
         resetCachedUser();
         setCloudStatus("local");
@@ -182,7 +185,12 @@ export function useFaceIQStore() {
       }
     });
     const onOnline = () => {
-      if (cloudTried.current) runSyncRef.current?.();
+      if (cloudTried.current) {
+        void runSyncRef.current?.().catch((error: unknown) => {
+          console.error("[store] reconnect sync failed", error instanceof Error ? error : new Error("Unknown sync error"));
+          setCloudStatus("local");
+        });
+      }
     };
     window.addEventListener("online", onOnline);
     return () => {
@@ -260,9 +268,14 @@ export function useFaceIQStore() {
     };
     setState((s) => ({ ...s, analyses: [...s.analyses, analysis], selectedId: id }));
     // Cross-device backup (fire-and-forget; local stays source of truth)
-    cloudPush(analysis).then((ok) => {
-      if (ok) setCloudStatus("synced");
-    });
+    void cloudPush(analysis)
+      .then((ok) => {
+        if (ok) setCloudStatus("synced");
+      })
+      .catch((error: unknown) => {
+        console.error("[store] analysis backup failed", error instanceof Error ? error : new Error("Unknown backup error"));
+        setCloudStatus("local");
+      });
     return id;
   };
 
@@ -272,11 +285,15 @@ export function useFaceIQStore() {
       const next = s.analyses.filter((a) => a.id !== id);
       return { ...s, analyses: next, selectedId: s.selectedId === id ? (next[next.length - 1]?.id ?? null) : s.selectedId };
     });
-    cloudDelete(id);
+    void cloudDelete(id).catch((error: unknown) => {
+      console.error("[store] cloud delete failed", error instanceof Error ? error : new Error("Unknown delete error"));
+    });
   };
   const clearAll = () => {
     setState((s) => ({ ...s, analyses: [], selectedId: null }));
-    cloudClear();
+    void cloudClear().catch((error: unknown) => {
+      console.error("[store] cloud clear failed", error instanceof Error ? error : new Error("Unknown clear error"));
+    });
   };
 
   const addPlanAction = (treatment: string) => setState((s) => ({ ...s, planActions: [...s.planActions, { treatment, order_index: s.planActions.length, status: "pending" as const }] }));
