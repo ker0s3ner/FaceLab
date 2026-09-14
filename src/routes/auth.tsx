@@ -30,7 +30,9 @@ function AuthPage() {
     let active = true;
     void supabase.auth.getSession()
       .then(({ data }) => {
-        if (active && data.session) return navigate({ to: "/dashboard", replace: true });
+        if (active && data.session) {
+          void navigate({ to: "/dashboard", replace: true });
+        }
       })
       .catch(() => {
         if (active) setError("Your session could not be restored. Please sign in again.");

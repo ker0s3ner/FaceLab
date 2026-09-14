@@ -329,7 +329,16 @@ export function useFaceIQStore() {
         return next;
       }),
     }));
-    if (updated) cloudPush(updated as Analysis).then((ok) => ok && setCloudStatus("synced"));
+    if (updated) {
+      void cloudPush(updated as Analysis)
+        .then((ok) => {
+          if (ok) setCloudStatus("synced");
+        })
+        .catch((error: unknown) => {
+          console.error("[store] ratio backup failed", error instanceof Error ? error : new Error("Unknown backup error"));
+          setCloudStatus("local");
+        });
+    }
   };
 
   return { state, setState, addAnalysis, select, removeAnalysis, clearAll, addPlanAction, reorderPlan, removePlanAction, overrideRatio, cloudStatus, cloudError, pending, syncNow };
