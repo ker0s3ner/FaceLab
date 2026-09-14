@@ -28,6 +28,10 @@ function load(): FaceIQState {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as FaceIQState;
+      if (!parsed || typeof parsed !== "object") {
+        console.warn("[store] Ignoring invalid saved dashboard state");
+        return { analyses: [], selectedId: null, planActions: [], gender: "Male", ethnicity: "White / Caucasian", skinType: "combination" };
+      }
       // Migrate old shallow pillars (1-2 ratios) to deep AI-driven ratios so Key Strengths/Areas not empty.
       // Each entry is guarded individually — one corrupt scan must never kill the rest.
       let migrated = false;
@@ -112,27 +116,33 @@ export function useFaceIQStore() {
   const runSync = async () => {
     setCloudStatus("syncing");
     setCloudError(null);
-    const cloud = await fetchCloud();
-    if (!cloud) {
+    try {
+      const cloud = await fetchCloud();
+      if (!cloud) {
+        setCloudStatus("local");
+        setCloudError(lastCloudError());
+        return;
+      }
+      if (cloud.tablesMissing) {
+        setCloudStatus("local");
+        setCloudError("Cloud storage is not ready yet.");
+        return;
+      }
+      const merged = mergeSnapshots(stateRef.current, cloud.snapshot);
+      setState(merged);
+      const res = await syncAll(merged);
+      setPending(pendingCount());
+      if (res.failed > 0) {
+        setCloudStatus("error");
+        setCloudError(res.error ?? lastCloudError());
+      } else {
+        setCloudStatus("synced");
+        setCloudError(null);
+      }
+    } catch (error) {
+      console.error("[store] sync failed", error instanceof Error ? error : new Error("Unknown sync error"));
       setCloudStatus("local");
-      setCloudError(lastCloudError());
-      return;
-    }
-    if (cloud.tablesMissing) {
-      setCloudStatus("local");
-      setCloudError("Cloud tables missing — run the migration SQL in Supabase.");
-      return;
-    }
-    const merged = mergeSnapshots(stateRef.current, cloud.snapshot);
-    setState(merged);
-    const res = await syncAll(merged);
-    setPending(pendingCount());
-    if (res.failed > 0) {
-      setCloudStatus("error");
-      setCloudError(res.error ?? lastCloudError());
-    } else {
-      setCloudStatus("synced");
-      setCloudError(null);
+      setCloudError("Sync failed. Your scans remain available on this device.");
     }
   };
   const runSyncRef = useRef(runSync);

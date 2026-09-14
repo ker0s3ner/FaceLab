@@ -87,7 +87,13 @@ function Dashboard() {
 
   const candidate = state.analyses.find((a) => a.id === state.selectedId) ?? state.analyses[state.analyses.length - 1] ?? null;
   // Old/partial saved analyses can lack pillars entirely, which crashed the page.
-  const selected = candidate && Array.isArray(candidate.pillars) && candidate.pillars.length > 0 ? candidate : null;
+  const selected =
+    candidate &&
+    Array.isArray(candidate.pillars) &&
+    candidate.pillars.length > 0 &&
+    candidate.pillars.every((pillar) => pillar && Array.isArray(pillar.ratios))
+      ? candidate
+      : null;
   const userName = user?.email?.split("@")[0] ?? "User";
   const userEmail = user?.email ?? "";
 
@@ -110,6 +116,7 @@ function Dashboard() {
   const openRatioModal = (ratioName: string) => {
     if (!selected) return;
     for (const p of selected.pillars) {
+      if (!Array.isArray(p.ratios)) continue;
       const idx = p.ratios.findIndex((r: any) => r.name === ratioName);
       if (idx >= 0) {
         const r = p.ratios[idx] as any;
