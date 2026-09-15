@@ -47,12 +47,13 @@ export function pendingCount(): number {
 export async function getUserId(): Promise<string | null> {
   if (cachedUserId !== undefined) return cachedUserId;
   try {
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) {
+    const { data, error } = await supabase.auth.getSession();
+    const user = data.session?.user;
+    if (error || !user) {
       cachedUserId = null;
       return null;
     }
-    cachedUserId = data.user.id;
+    cachedUserId = user.id;
     return cachedUserId;
   } catch {
     cachedUserId = null;
