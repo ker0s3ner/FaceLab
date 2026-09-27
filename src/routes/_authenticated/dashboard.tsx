@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useFaceIQStore } from "@/lib/faceiq/store";
 import { DashboardShell, type DashboardTab } from "@/components/dashboard-shell";
@@ -626,6 +626,24 @@ function OverviewTab({ selected, onViewPillar, earliest, onOpenRatio }: { select
   );
 }
 
+// The photo box is always rendered aspect-[3/4] with object-cover, which
+// crops the source image to fit. MediaPipe's normalized landmarks (0–1) are
+// relative to the *uncropped* source image, so they must be remapped into
+// the visible crop or they land in the wrong spot whenever a photo's aspect
+// ratio isn't already exactly 3:4 (very common — this was making dots look
+// randomly placed, worst on side photos which are rarely 3:4).
+const PHOTO_BOX_ASPECT = 3 / 4;
+
+function toBoxCoords(u: number, v: number, imgW: number, imgH: number, boxAspect = PHOTO_BOX_ASPECT): { x: number; y: number } {
+  if (!imgW || !imgH) return { x: u, y: v };
+  const imgAspect = imgW / imgH;
+  const visibleFracX = imgAspect > boxAspect ? boxAspect / imgAspect : 1;
+  const visibleFracY = imgAspect < boxAspect ? imgAspect / boxAspect : 1;
+  const cropX = (1 - visibleFracX) / 2;
+  const cropY = (1 - visibleFracY) / 2;
+  return { x: (u - cropX) / visibleFracX, y: (v - cropY) / visibleFracY };
+}
+
 function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightId, landmarkPos, view, pillar }: {
   src: string;
   points?: { x: number; y: number }[];
@@ -638,7 +656,19 @@ function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightI
   pillar: string;
 }) {
   const [meshOn, setMeshOn] = useState(true);
-  const shown = (points ?? []).filter((_, i) => i % 2 === 0).slice(0, 160);
+  const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => setNaturalSize(null), [src]);
+  const shownRaw = (points ?? []).filter((_, i) => i % 2 === 0).slice(0, 160);
+  const shown = naturalSize
+    ? shownRaw.map((p) => toBoxCoords(p.x, p.y, naturalSize.w, naturalSize.h))
+    : shownRaw;
+  const boxKeys = useMemo(() => {
+    if (!keys) return keys;
+    if (!naturalSize) return keys;
+    const out: Record<string, { x: number; y: number }> = {};
+    for (const [name, p] of Object.entries(keys)) out[name] = toBoxCoords(p.x, p.y, naturalSize.w, naturalSize.h);
+    return out;
+  }, [keys, naturalSize]);
   const active = enriched.find((r: any) => r.name === highlightId) ?? null;
   const markerPos = (name: string): { x: number; y: number } => {
     const box = regionBoxFor(name, (view === "side" ? "side" : "front") as "front" | "side");
@@ -647,7 +677,15 @@ function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightI
   };
   return (
     <div className="relative">
-      <SafeImg src={src} alt={`${pillar} ${view}`} className="aspect-[3/4] w-full object-cover bg-zinc-100" />
+      <SafeImg
+        src={src}
+        alt={`${pillar} ${view}`}
+        className="aspect-[3/4] w-full object-cover bg-zinc-100"
+        onLoad={(e) => {
+          const img = e.currentTarget;
+          setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+        }}
+      />
       {/* real mesh dots */}
       {meshOn && shown.length > 0 && (
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full pointer-events-none">
@@ -664,7 +702,7 @@ function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightI
             pillar={pillar as PillarName}
             view={(view === "side" ? "side" : "front") as "front" | "side"}
             raw={active.raw_measurement}
-            keys={keys ?? {}}
+            keys={boxKeys ?? {}}
           />
         </svg>
       )}

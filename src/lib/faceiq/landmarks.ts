@@ -40,6 +40,11 @@ export function getFaceLandmarker(): Promise<FaceLandmarker> {
         numFaces: 1,
         outputFaceBlendshapes: false,
         outputFacialTransformationMatrixes: false,
+        // Defaults (0.5) frequently reject side/profile photos, where the
+        // underlying face detector is inherently less confident — lowering
+        // these lets a profile shot still return a mesh instead of nothing.
+        minFaceDetectionConfidence: 0.3,
+        minFacePresenceConfidence: 0.3,
       });
     })().catch((err) => {
       landmarkerPromise = null;

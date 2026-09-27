@@ -1,3 +1,5 @@
+import type { SyntheticEvent } from "react";
+
 /** Image that degrades to a labeled placeholder when the photo is missing
  * (e.g. quota-slimmed legacy scans) instead of a broken-image icon. */
 export function SafeImg({
@@ -5,11 +7,13 @@ export function SafeImg({
   alt,
   className = "",
   label = "No photo — rescan",
+  onLoad,
 }: {
   src: string;
   alt: string;
   className?: string;
   label?: string;
+  onLoad?: (e: SyntheticEvent<HTMLImageElement>) => void;
 }) {
   if (!src) {
     return (
@@ -21,5 +25,5 @@ export function SafeImg({
       </div>
     );
   }
-  return <img src={src} alt={alt} className={className} />;
+  return <img src={src} alt={alt} className={className} onLoad={onLoad} />;
 }
