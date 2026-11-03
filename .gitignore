@@ -30,3 +30,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local tooling and stray copies
+.freebuff/
+package copy.json
+package-lock copy.json
+package-lock.json
