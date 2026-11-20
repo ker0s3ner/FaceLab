@@ -10,6 +10,7 @@ A facial analysis web app. Upload a front and a side photo and FaceLab measures 
 - **AI assessment.** A server function sends the photos to a Gemini model through the Lovable AI gateway for a written analysis.
 - **Treatment catalog and plan.** A catalog of surgical and non-surgical options, an auto-generated plan, and a simulate view for morph previews.
 - **History.** Scans are saved per account and synced through Supabase, so you can compare over time.
+- **Public pages.** A celebrity wiki (`/celebs`, `/celebs-wiki/$slug`), a creator league, and a join-us page.
 
 ## Stack
 
@@ -34,19 +35,26 @@ bun run dev      # or: npm run dev
 
 The Supabase URL and publishable key are read from `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, plus the server-side `SUPABASE_*` equivalents). The AI assessment also needs a Lovable AI gateway key available to the server.
 
-Other scripts: `build`, `preview`, `lint`, `format`.
+Other scripts: `build`, `build:dev`, `preview`, `lint`, `format`. There is no test script.
 
 ## Project layout
 
 ```
 src/
-├── routes/            pages: landing, auth, dashboard and its tabs
+├── routes/            landing, login/auth, celebs wiki, creator league, join us,
+│                      privacy/terms, and _authenticated/dashboard
 ├── components/        analyzer, ratio overlays, rating display, shadcn/ui
-├── lib/faceiq/        landmarks, ratios, flaws, treatments, plan, morphing, store
+├── hooks/
+├── lib/faceiq/        landmarks, flaws, treatments, autoplan, morph, store, cloud, types
 ├── lib/analyze.functions.ts   AI analysis server function
-└── integrations/      Supabase and Lovable clients
-supabase/migrations/   database migrations
-plans/                 phased implementation plan
+├── integrations/      Supabase and Lovable clients
+├── router.tsx, server.ts, start.ts   TanStack Start entry points
+└── routeTree.gen.ts   generated; do not edit
+drizzle/               Drizzle schema and migrations
+supabase/              config.toml and migrations
+plans/                 phased implementation plan (faceiq-clone.md)
+reports/, research_notes/   market strategy research
+AGENTS.md              notes for AI agents (Lovable history rules)
 ```
 
 ## Privacy

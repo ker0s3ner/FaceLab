@@ -1,8 +1,6 @@
-import { regionBoxFor } from "@/lib/faceiq/types";
 import {
   angleDefFor,
   curveDefFor,
-  estimatedKeys,
   lineDefFor,
   overlayKindFor,
   rulerDefFor,
@@ -12,23 +10,6 @@ import type { PillarName } from "@/lib/faceiq/types";
 type Pt = { x: number; y: number };
 
 const STROKE = "#10b981";
-
-function hashStr(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-/** Deterministic pseudo-random in [0,1) */
-function rand(seed: number, i: number): number {
-  let h = (seed ^ Math.imul(i + 1, 2654435761)) >>> 0;
-  h = Math.imul(h ^ (h >>> 15), 2246822519);
-  h ^= h >>> 13;
-  return ((h >>> 0) % 10000) / 10000;
-}
 
 function Pill({ x, y, text }: { x: number; y: number; text: string }) {
   const w = Math.max(10, text.length * 2.1 + 5);
@@ -60,7 +41,7 @@ function Ticks({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: num
 
 /**
  * Real-time overlay for the active ratio. Only the selected ratio renders.
- * Falls back to region boxes / nothing when landmark keys are unavailable.
+ * Draws only from detected, named landmarks. It does not invent coordinates.
  */
 export function RatioOverlay({
   ratioName,
@@ -76,11 +57,8 @@ export function RatioOverlay({
   keys: Record<string, Pt>;
 }) {
   const kind = overlayKindFor(ratioName, pillar);
-  // Real detected keys win; estimated anatomy fills gaps (esp. side profiles
-  // where mesh detection often fails) so overlays always draw true-to-type.
-  const merged: Record<string, Pt> = { ...estimatedKeys(view), ...keys };
   const K = (n: string): Pt | null => {
-    const p = merged[n];
+    const p = keys[n];
     return p ? { x: p.x * 100, y: p.y * 100 } : null;
   };
 
@@ -88,7 +66,7 @@ export function RatioOverlay({
     const def = lineDefFor(ratioName);
     const a = def ? K(def.a) : null;
     const b = def ? K(def.b) : null;
-    if (!a || !b) return <BoxFallback name={ratioName} view={view} raw={raw} />;
+    if (!a || !b) return null;
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2;
     return (
@@ -105,7 +83,7 @@ export function RatioOverlay({
   if (kind === "curve") {
     const seq = curveDefFor(ratioName) ?? ["cheekR", "gonionR", "chin", "gonionL", "cheekL"];
     const pts = seq.map(K).filter((p): p is Pt => !!p);
-    if (pts.length < 2) return <BoxFallback name={ratioName} view={view} raw={raw} />;
+    if (pts.length < 2) return null;
     const d = `M ${pts.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" L ")}`;
     const mid = pts[Math.floor(pts.length / 2)]!;
     return (
@@ -124,7 +102,7 @@ export function RatioOverlay({
     const v = def ? K(def.vertex) : null;
     const r1 = def ? K(def.r1) : null;
     const r2 = def ? K(def.r2) : null;
-    if (!v || !r1 || !r2) return <BoxFallback name={ratioName} view={view} raw={raw} />;
+    if (!v || !r1 || !r2) return null;
     const ray = (t: Pt) => {
       const dx = t.x - v.x;
       const dy = t.y - v.y;
@@ -147,7 +125,7 @@ export function RatioOverlay({
   if (kind === "ruler") {
     const seq = rulerDefFor(ratioName);
     const pts = seq.map(K).filter((p): p is Pt => !!p);
-    if (pts.length < 2) return <BoxFallback name={ratioName} view={view} raw={raw} />;
+    if (pts.length < 2) return null;
     const xs = pts.map((p) => p.x);
     const x = xs.reduce((a, b) => a + b, 0) / xs.length;
     const top = pts[0]!;
@@ -176,34 +154,6 @@ export function RatioOverlay({
     );
   }
 
-  // region
-  const box = regionBoxFor(ratioName, view);
-  if (!box) return null;
-  const seed = hashStr(ratioName);
-  const dots = Array.from({ length: 12 }, (_, i) => ({
-    x: box.x + rand(seed, i * 2) * box.w,
-    y: box.y + rand(seed, i * 2 + 1) * box.h,
-  }));
-  return (
-    <g pointerEvents="none">
-      <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={2} fill={STROKE} opacity={0.16} />
-      <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={2} fill="none" stroke={STROKE} strokeWidth={0.7} strokeDasharray="2 1.4" />
-      {dots.map((d, i) => (
-        <circle key={i} cx={d.x} cy={d.y} r={0.7} fill={STROKE} opacity={0.8} />
-      ))}
-      <Pill x={box.x + box.w / 2} y={box.y + box.h / 2} text={raw} />
-    </g>
-  );
-}
-
-function BoxFallback({ name, view, raw }: { name: string; view: "front" | "side"; raw: string }) {
-  const box = regionBoxFor(name, view);
-  if (!box) return null;
-  return (
-    <g pointerEvents="none">
-      <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={2} fill={STROKE} opacity={0.12} />
-      <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={2} fill="none" stroke={STROKE} strokeWidth={0.7} strokeDasharray="2 1.4" />
-      <Pill x={box.x + box.w / 2} y={box.y + box.h / 2} text={raw} />
-    </g>
-  );
+  // Region assessments do not have point geometry in the current mesh model.
+  return null;
 }

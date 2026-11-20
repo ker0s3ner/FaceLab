@@ -12,7 +12,7 @@ import { RatingDisplay } from "@/components/rating-display";
 import { Sparkles, Loader2, Shield, Trash2, Brain, Save } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { analyzeFace, type AnalysisResult } from "@/lib/analyze.functions";
-import { regionBoxFor, type PillarName } from "@/lib/faceiq/types";
+import { type PillarName } from "@/lib/faceiq/types";
 import { flawStatesFor } from "@/lib/faceiq/flaws";
 import { habitsFor, treatmentsForAnalysis } from "@/lib/faceiq/autoplan";
 import { TREATMENTS } from "@/lib/faceiq/treatments";
@@ -644,21 +644,22 @@ function toBoxCoords(u: number, v: number, imgW: number, imgH: number, boxAspect
   return { x: (u - cropX) / visibleFracX, y: (v - cropY) / visibleFracY };
 }
 
-function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightId, landmarkPos, view, pillar }: {
+function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightId, view, pillar }: {
   src: string;
   points?: { x: number; y: number }[];
   keys?: Record<string, { x: number; y: number }>;
   enriched: any[];
   highlightId: string | null;
   setHighlightId: (v: string | null) => void;
-  landmarkPos: Record<string, { x: number; y: number }>;
   view: string;
   pillar: string;
 }) {
-  const [meshOn, setMeshOn] = useState(true);
+  const [meshOn, setMeshOn] = useState(false);
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => setNaturalSize(null), [src]);
-  const shownRaw = (points ?? []).filter((_, i) => i % 2 === 0).slice(0, 160);
+  // Draw named anatomical anchors only. Striding through the raw mesh made an
+  // apparently random cloud that obscured the photo without explaining it.
+  const shownRaw = Object.values(keys ?? {});
   const shown = naturalSize
     ? shownRaw.map((p) => toBoxCoords(p.x, p.y, naturalSize.w, naturalSize.h))
     : shownRaw;
@@ -670,11 +671,6 @@ function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightI
     return out;
   }, [keys, naturalSize]);
   const active = enriched.find((r: any) => r.name === highlightId) ?? null;
-  const markerPos = (name: string): { x: number; y: number } => {
-    const box = regionBoxFor(name, (view === "side" ? "side" : "front") as "front" | "side");
-    if (box) return { x: box.x + box.w / 2, y: box.y };
-    return landmarkPos[name] ?? { x: 50, y: 50 };
-  };
   return (
     <div className="relative">
       <SafeImg
@@ -706,35 +702,19 @@ function LandmarkPhoto({ src, points, keys, enriched, highlightId, setHighlightI
           />
         </svg>
       )}
-      {/* markers for all listed ratios */}
-      {enriched.slice(0, 12).map((r: any) => {
-        const pos = markerPos(r.name);
-        const isActive = highlightId === r.name;
-        return (
-          <button
-            key={r.name}
-            onClick={() => setHighlightId(isActive ? null : r.name)}
-            className={`absolute flex h-6 w-6 items-center justify-center rounded-full border-2 bg-white text-[10px] font-bold shadow transition-colors ${isActive ? "border-emerald-500 text-emerald-600" : "border-zinc-300/80 text-zinc-500"}`}
-            style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: "translate(-50%, -50%)" }}
-            title={`${r.name} — ${r.raw_measurement}`}
-          >
-            ?
-          </button>
-        );
-      })}
       {active && (
         <div className="absolute left-3 top-12 max-w-[70%] rounded-lg bg-zinc-900 px-3 py-2 text-xs text-white dark:bg-white dark:text-zinc-900 shadow">
           {active.name} — {active.raw_measurement}
-          {!(keys && Object.keys(keys).length > 0) && <span className="opacity-70"> · ≈ estimated</span>}
+          {!(keys && Object.keys(keys).length > 0) && <span className="opacity-70"> · landmark points unavailable</span>}
           <div className="mt-1 h-0.5 w-full bg-emerald-400" />
         </div>
       )}
       <div className="absolute right-3 top-3 flex gap-2">
         <button onClick={() => setMeshOn((v) => !v)} className="flex h-8 items-center rounded-full bg-white/90 px-3 text-xs font-medium text-zinc-700 shadow dark:bg-zinc-800 dark:text-zinc-200">
-          {meshOn ? `Mesh on (${shown.length})` : "Mesh off"}
+          {meshOn ? `Landmarks on (${shown.length})` : "Landmarks off"}
         </button>
       </div>
-      <span className="absolute bottom-3 left-3 text-[10px] tracking-widest uppercase text-white/70">FaceLab · {shown.length ? `${shown.length} pts` : "no mesh"}</span>
+      <span className="absolute bottom-3 left-3 text-[10px] tracking-widest uppercase text-white/70">FaceLab · {shown.length ? `${shown.length} keypoints` : "no detected landmarks"}</span>
     </div>
   );
 }
@@ -757,7 +737,7 @@ function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selec
   // Region-based pillars (Dimorphism/Features/Angularity) show all items — boxes adapt per view.
   const allRatios = p.ratios;
   const viewRatios = allRatios.filter((r: any) => r.view === view);
-  const fallbackRatios = pillar === "Harmony" ? (viewRatios.length ? viewRatios : allRatios) : allRatios;
+  const fallbackRatios = pillar === "Harmony" ? viewRatios : allRatios;
   const visibleRatios = showAllRatios ? fallbackRatios : fallbackRatios.slice(0, 10);
   // enriched handles both views now — merged already via fallback, but keep spec extras for both
   const enriched: any[] = (() => {
@@ -783,21 +763,6 @@ function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selec
     for (const e of extras) if (!names.has(e.name)) merged.unshift(e as any);
     return merged;
   })();
-
-  // Landmark positions mapped to anatomy — not random
-  const landmarkPos: Record<string, { x: number; y: number }> = {
-    "Total Facial Width to Height Ratio": { x: 50, y: 50 },
-    "Eye Separation Ratio": { x: 50, y: 38 },
-    "Intercanthal Distance": { x: 50, y: 40 },
-    "Lower Third Proportion": { x: 50, y: 72 },
-    "Facial Convexity / Glabella": { x: 48, y: 30 },
-    "Mandibular recession": { x: 52, y: 78 },
-    "Z Angle": { x: 38, y: 62 },
-    "Nasofrontal Angle": { x: 52, y: 42 },
-    "Holdaway H Line": { x: 42, y: 66 },
-    "Jaw Frontal Angle": { x: 30, y: 70 },
-    "Gonial Angle": { x: 28, y: 68 },
-  };
 
   // View behavior per pillar:
   // - Harmony: strict front/side split, user picks via the two photo cards.
@@ -852,7 +817,6 @@ function AnalysisTab({ selected, initialPillar, earliest, onOpenRatio }: { selec
             enriched={enriched}
             highlightId={highlightId}
             setHighlightId={setHighlightId}
-            landmarkPos={landmarkPos}
             view={effView}
             pillar={pillar}
           />
@@ -1186,8 +1150,9 @@ const SIM_REGIONS: { name: string; params: { name: string; desc: string; default
 
 type Movement = { id: string; region: string; param: string; value: number };
 
-function MorphViewer({ photo, treatment, adv, vert, mix, onAdv, onVert, onMix }: {
+function MorphViewer({ photo, keys, treatment, adv, vert, mix, onAdv, onVert, onMix }: {
   photo: string;
+  keys?: Record<string, { x: number; y: number }>;
   treatment: string;
   adv: number;
   vert: number;
@@ -1212,7 +1177,7 @@ function MorphViewer({ photo, treatment, adv, vert, mix, onAdv, onVert, onMix }:
       }
       try {
         const { renderWarp, specForTreatment } = await import("@/lib/faceiq/morph");
-        await renderWarp(canvas, photo, specForTreatment(treatment, adv, vert, mix));
+        await renderWarp(canvas, photo, keys ? specForTreatment(treatment, adv, vert, mix, keys) : null);
       } catch {}
       if (!cancelled) setRendering(false);
     }, 140);
@@ -1220,7 +1185,7 @@ function MorphViewer({ photo, treatment, adv, vert, mix, onAdv, onVert, onMix }:
       cancelled = true;
       clearTimeout(t);
     };
-  }, [photo, treatment, adv, vert, mix]);
+  }, [photo, keys, treatment, adv, vert, mix]);
 
   return (
     <div className="p-4">
@@ -1261,7 +1226,7 @@ function MorphViewer({ photo, treatment, adv, vert, mix, onAdv, onVert, onMix }:
           <input type="range" min={0} max={100} step={5} value={mix} onChange={(e) => onMix(Number(e.target.value))} className="mt-1 w-full accent-zinc-900" />
         </div>
       </div>
-      <p className="mt-3 text-[11px] leading-snug text-zinc-400">Approximate 2D preview from your photo — not a surgical prediction. Educational only.</p>
+      <p className="mt-3 text-[11px] leading-snug text-zinc-400">Landmark-anchored 2D visualization for exploration only. It is not a surgical prediction. A detected face mesh is required for the preview to move.</p>
     </div>
   );
 }
@@ -1301,24 +1266,6 @@ function SimulateTab({ selected }: { selected: any }) {
       setVert(0);
     }
   }, [choice]);
-  const afterScore = Math.min(
-    10,
-    selected.overall_score +
-      t.score_delta * (0.5 + mix / 200) +
-      (adv * 0.02 + vert * 0.015) * (mix / 100) +
-      movements.reduce((s, m) => s + m.value * 0.02, 0) * 0.05,
-  );
-  const sideAfter = Math.min(10, (selected.pillars.find((x: any) => x.name === "Features")?.side_score ?? 5) + t.score_delta * 0.6);
-
-  // Live ratiosMoved: worst ratios from the actual analysis improve toward ideal
-  const worst = selected.pillars.flatMap((p: any) => p.ratios).filter((r: any) => r.severity_tag === "SEVERE" || r.severity_tag === "EXTREME").slice(0, 6);
-  const ratiosMoved = (worst.length ? worst : selected.pillars.flatMap((p: any) => p.ratios).slice(0, 6)).map((r: any) => ({
-    name: r.name,
-    before: r.raw_measurement,
-    after: r.ideal_label ?? r.raw_measurement,
-    tag: "Ideal" as const,
-  }));
-
   const surgical = TREATMENTS.filter((x) => x.category === "surgical");
   const nonsurgical = TREATMENTS.filter((x) => x.category === "non-surgical");
 
@@ -1344,7 +1291,11 @@ function SimulateTab({ selected }: { selected: any }) {
       {/* Before/After viewer §7.3 — real canvas warp preview */}
       <Card className="p-0 overflow-hidden">
         <div className="grid lg:grid-cols-[1.7fr_0.9fr] gap-0">
-          <MorphViewer photo={selected.front_photo} treatment={t.name} adv={adv} vert={vert} mix={mix} onAdv={setAdv} onVert={setVert} onMix={setMix} />
+          <MorphViewer
+            photo={/genioplasty|chin|jaw|bsso|bimax|trimax|rhinoplasty|nasal|nose/i.test(t.name) ? selected.side_photo : selected.front_photo}
+            keys={/genioplasty|chin|jaw|bsso|bimax|trimax|rhinoplasty|nasal|nose/i.test(t.name) ? selected.keyPoints?.side : selected.keyPoints?.front}
+            treatment={t.name} adv={adv} vert={vert} mix={mix} onAdv={setAdv} onVert={setVert} onMix={setMix}
+          />
           <div className="p-4 space-y-4 border-l dark:border-zinc-800">
             <div>
               <p className="text-[11px] tracking-widest uppercase text-zinc-400">Treatment</p>
@@ -1362,17 +1313,9 @@ function SimulateTab({ selected }: { selected: any }) {
               </div>
             </div>
             <div className="rounded-xl bg-zinc-50 p-3 dark:bg-zinc-800/50">
-              <p className="text-xs tracking-widest uppercase text-zinc-400">Harmony Score</p>
-              <p className="brand-display text-2xl">{selected.overall_score.toFixed(2)} → {afterScore.toFixed(2)} <span className="text-emerald-600 text-base">+{(afterScore - selected.overall_score).toFixed(2)}</span></p>
-              <p className="text-xs text-zinc-500">Side {sideAfter.toFixed(1)}</p>
-            </div>
-            <div>
-              <p className="text-xs tracking-widest uppercase text-zinc-400">Ratios Moved</p>
-              <ul className="mt-2 space-y-1 text-xs">
-                {ratiosMoved.slice(0, 4).map((r: { name: string; before: string; after: string; tag: string }) => (
-                  <li key={r.name} className="flex justify-between gap-2"><span className="truncate">{r.name}</span><span className="tabular-nums">{r.before} → {r.after}</span><span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">{r.tag}</span></li>
-                ))}
-              </ul>
+              <p className="text-xs tracking-widest uppercase text-zinc-400">Preview mode</p>
+              <p className="font-medium">Visual exploration only</p>
+              <p className="text-xs text-zinc-500">Scores and measurements are not projected from this 2D warp.</p>
             </div>
           </div>
         </div>
@@ -1460,8 +1403,8 @@ function SimulateTab({ selected }: { selected: any }) {
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs tracking-widest uppercase text-zinc-400">Front + Profile</p>
-              <p className="font-medium tabular-nums">{selected.overall_score.toFixed(2)} → {afterScore.toFixed(2)} <span className="text-emerald-600">+{(afterScore - selected.overall_score).toFixed(2)}</span></p>
+              <p className="text-xs tracking-widest uppercase text-zinc-400">Original photos</p>
+              <p className="font-medium">Analysis scores stay unchanged</p>
             </div>
             <div className="flex gap-2">
               <button onClick={() => setLinesOn((v) => !v)} className={`rounded-full border px-3 py-1 text-xs ${linesOn ? "bg-zinc-900 text-white border-zinc-900" : "bg-white"}`}>Lines {linesOn ? "On" : "Off"}</button>
